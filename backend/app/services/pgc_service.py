@@ -9,17 +9,17 @@ from ..db.repositories import ColetasRepository
 
 logger = logging.getLogger(__name__)
 
-def coleta_pgc(username: str, password: str, ano_ref: str) -> List[Dict[str, Any]]:
+def coleta_pgc(ano_ref: str) -> List[Dict[str, Any]]:
     """
     Orquestra a coleta do PGC e salva os dados brutos.
     """
-    if not username or not password or not ano_ref:
-        raise ValueError("username, password e ano_ref são obrigatórios.")
+    if not ano_ref:
+        raise ValueError("ano_ref é obrigatório.")
 
-    logger.info("Iniciando coleta PGC (Lógica VBA)")
+    logger.info("Iniciando coleta PGC (Lógica VBA - Login Manual)")
     
     # 1. Coletar tudo (inclusive sujo)
-    dados_brutos = run_pgc_scraper_vba(username=username, password=password, ano_ref=ano_ref)
+    dados_brutos = run_pgc_scraper_vba(ano_ref=ano_ref)
     
     if not dados_brutos:
         logger.warning("Coleta PGC não retornou dados.")

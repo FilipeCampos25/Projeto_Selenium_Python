@@ -22,12 +22,12 @@ projeto_adaptado/
 ├── backend/
 │   └── app/
 │       ├── rpa/
-│       │   ├── pgc_scraper_vba_logic.py  ⭐ NOVO - Lógica principal replicada do VBA
-│       │   ├── pgc_xpaths.json           ⭐ NOVO - XPaths do VBA centralizados
-│       │   ├── waiter_vba.py             ⭐ NOVO - Funções de espera do VBA
-│       │   ├── pgc_scraper.py            (código original)
-│       │   ├── waiter.py                 (código original)
-│       │   └── ...
+│       │   ├── pgc_scraper_vba_logic.py  ✅ Lógica principal replicada do VBA
+│       │   ├── pgc_xpaths.json           ✅ XPaths do VBA centralizados
+│       │   ├── waiter_vba.py             ✅ Funções de espera do VBA
+│       │   ├── driver_factory.py         ✅ Fábrica de drivers moderna
+│       │   ├── vba_compat.py             ✅ Compatibilidade VBA
+│       │   └── pncp_*.py                 (scrapers PNCP)
 │       ├── db/                           (banco de dados)
 │       ├── api/                          (API REST)
 │       └── services/                     (serviços)
@@ -72,18 +72,19 @@ python3 -m backend.app.rpa.pgc_scraper_vba_logic <CPF> <SENHA> 2025
 ```python
 from backend.app.rpa.pgc_scraper_vba_logic import run_pgc_scraper_vba
 
-# Coletar dados
-data = run_pgc_scraper_vba(
-    username="12345678901",
-    password="sua_senha",
-    ano_ref="2025"
-)
+# Coletar dados (login manual via noVNC)
+data = run_pgc_scraper_vba(ano_ref="2025")
 
 # Processar resultados
 print(f"Total de registros: {len(data)}")
 for item in data:
     print(f"DFD: {item['dfd']} | Valor: R$ {item['valor']:.2f}")
 ```
+
+### Uso via API
+
+- **PGC**: POST `/api/pgc/iniciar` com `{"ano_ref": 2025}` (login manual via noVNC)
+- **PNCP**: POST `/api/pncp/iniciar` com `{"ano_ref": 2025, "max_pages": 200, "headless": false}` (login manual via noVNC)
 
 ## 📚 Documentação
 
@@ -269,6 +270,6 @@ Para dúvidas ou problemas:
 
 ---
 
-**Desenvolvido por:** Manus AI  
-**Data:** Dezembro de 2025  
+**Desenvolvido por:** Filipe de Campos Duarte  
+**Data:** 24 Dezembro de 2025  
 **Versão:** 1.0.0

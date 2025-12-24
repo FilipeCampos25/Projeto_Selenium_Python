@@ -20,17 +20,15 @@ with open(XPATHS_FILE, 'r', encoding='utf-8') as f:
     XPATHS = json.load(f)
 
 class PGCScraperVBA:
-    def __init__(self, driver: WebDriver, username: str, password: str, ano_ref: str = "2025"):
+    def __init__(self, driver: WebDriver, ano_ref: str = "2025"):
         self.driver = driver
-        self.username = username
-        self.password = password
         self.ano_ref = ano_ref
         self.compat = VBACompat(driver)
         self.data_collected = []
 
     def A_Loga_Acessa_PGC(self) -> bool:
-        """Replica Sub A_Loga_Acessa_PGC() do VBA."""
-        logger.info("=== INICIANDO LOGIN NO PGC (Lógica VBA) ===")
+        """Replica Sub A_Loga_Acessa_PGC() do VBA - Login manual via noVNC."""
+        logger.info("=== ABRINDO LOGIN NO PGC - AGUARDE LOGIN MANUAL VIA VNC ===")
         
         self.driver.get(XPATHS["login"]["url"])
         self.driver.maximize_window()
@@ -39,30 +37,19 @@ class PGCScraperVBA:
         try:
             self.compat.wait_for_checkpoint(XPATHS["login"]["btn_expand_governo"])
         except CheckpointFailureError:
-            logger.error("Falha no checkpoint inicial (btn_expand_governo). Abortando login.")
+            logger.error("Falha no checkpoint inicial (btn_expand_governo). Abortando.")
             return False
         self.compat.safe_click(XPATHS["login"]["btn_expand_governo"])
         
         # Scroll down (VBA)
         self.driver.execute_script("window.scrollTo(0, document.body.scrollHeight);")
         
-        # Preenche credenciais
-        try:
-            self.compat.wait_for_checkpoint(f"//*[@id='{XPATHS['login']['input_login_id']}']")
-        except CheckpointFailureError:
-            logger.error("Falha no checkpoint de campos de login. Abortando login.")
-            return False
-        self.driver.find_element(By.ID, XPATHS["login"]["input_login_id"]).send_keys(self.username)
-        self.driver.find_element(By.ID, XPATHS["login"]["input_senha_id"]).send_keys(self.password)
-        
-        self.compat.safe_click(XPATHS["login"]["btn_submit"])
-        
-        # Aguarda processamento e texto PGC
-        self.compat.testa_spinner()
+        # Aguarda login manual do usuário via noVNC
+        logger.info("Aguardando login manual... Abra o VNC em http://localhost:7900 e faça o login.")
         try:
             self.compat.wait_for_checkpoint(XPATHS["login"]["span_pgc_title"], "Planejamento e Gerenciamento de Contratações")
         except CheckpointFailureError:
-            logger.error("Falha no checkpoint pós-login (Título PGC). Abortando login.")
+            logger.error("Falha no checkpoint pós-login (Título PGC). Verifique se o login foi feito.")
             return False
         
         # Clica no PGC
@@ -78,10 +65,12 @@ class PGCScraperVBA:
             self.driver.switch_to.window(handle)
             if XPATHS["login"]["window_title"] in self.driver.title:
                 self.compat.last_handle = handle
-                logger.info(f"Janela PGC ativa: {self.driver.title}")
                 break
+        else:
+            logger.error("Não encontrou a janela do PGC.")
+            return False
         
-        self.compat.testa_spinner()
+        logger.info("Login manual concluído e PGC acessado com sucesso.")
         return True
 
     def A1_Demandas_DFD_PCA(self) -> List[Dict[str, Any]]:
@@ -190,15 +179,15 @@ class PGCScraperVBA:
             logger.warning(f"Erro ao converter valor monetário '{value_str}', retornando 0.0: {e}")
             return 0.0
 
-def run_pgc_scraper_vba(username: str, password: str, ano_ref: str = "2025") -> List[Dict[str, Any]]:
+def run_pgc_scraper_vba(ano_ref: str = "2025") -> List[Dict[str, Any]]:
     """
     Executa o scraper do PGC e retorna a lista de dados brutos coletados.
-    A persistência e o tratamento são responsabilidade da camada de serviço.
+    Login é feito manualmente via noVNC.
     """
-    from .driver_factory import build_driver
-    driver = build_driver(mode="local", headless=False)
+    from .driver_factory import create_driver
+    driver = create_driver(headless=False)
     try:
-        scraper = PGCScraperVBA(driver, username, password, ano_ref)
+        scraper = PGCScraperVBA(driver, ano_ref)
         if scraper.A_Loga_Acessa_PGC():
             return scraper.A1_Demandas_DFD_PCA()
         else:

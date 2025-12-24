@@ -30,7 +30,7 @@ services:
       SE_VNC_NO_PASSWORD: "true"
       SE_NODE_MAX_SESSIONS: 1
       SE_NODE_OVERRIDE_MAX_SESSIONS: "true"
-      SE_START_URL: "https://pncp.gov.br/"
+      SE_START_URL: ${PGC_URL}
     healthcheck:
       test: ["CMD", "curl", "-f", "http://localhost:4444/wd/hub/status"]
       interval: 10s

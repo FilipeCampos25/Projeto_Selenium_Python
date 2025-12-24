@@ -129,7 +129,17 @@
   <input id="max_pages" type="number" value="200" min="1" max="1000" />
   -->
 
-  <button id="btnIniciar">🚀 Iniciar Coleta</button>
+  <h2>Selecione o tipo de coleta:</h2>
+  
+  <div id="pgcSection">
+    <h3>📊 Coleta PGC (Login Manual via VNC)</h3>
+    <button id="btnPGC">🚀 Iniciar Coleta PGC</button>
+  </div>
+  
+  <div id="pncpSection">
+    <h3>🏛️ Coleta PNCP (Login Manual via VNC)</h3>
+    <button id="btnPNCP">🚀 Iniciar Coleta PNCP</button>
+  </div>
 
   <div id="status" class="log">Nenhuma ação ainda.</div>
   <a
@@ -141,14 +151,58 @@
   </a>
 
   <script>
-    const btn = document.getElementById('btnIniciar');
+    const btnPGC = document.getElementById('btnPGC');
+    const btnPNCP = document.getElementById('btnPNCP');
     const status = document.getElementById('status');
     const vncLink = document.getElementById('vncLink');
 
     let sessionId = null;
     let poll = null;
 
-    btn.addEventListener('click', async () => {
+    btnPGC.addEventListener('click', async () => {
+      const ano = prompt("Por favor, insira o Ano de Referência (ex: 2025):");
+      if (!ano || ano.trim() === "") {
+        alert('O Ano de Referência é obrigatório.');
+        return;
+      }
+      const ano_ref = parseInt(ano.trim());
+      if (isNaN(ano_ref) || ano_ref < 2000 || ano_ref > 2100) {
+        alert('Ano de Referência inválido.');
+        return;
+      }
+
+      btnPGC.disabled = true;
+      status.textContent = 'Iniciando coleta PGC... Abra o VNC para fazer login manual.';
+
+      try {
+        const resp = await fetch('/api/pgc/iniciar', {
+          method: 'POST',
+          headers: {'Content-Type':'application/json'},
+          body: JSON.stringify({ ano_ref: ano_ref })
+        });
+        const data = await resp.json();
+        if (!resp.ok) {
+          status.textContent = 'Erro ao iniciar PGC: ' + (data.detail || JSON.stringify(data));
+          btnPGC.disabled = false;
+          return;
+        }
+        status.textContent = data.message || 'Coleta PGC iniciada. Faça login no VNC.';
+
+        // Abrir VNC automaticamente
+        setTimeout(() => {
+          window.open('http://localhost:7900', '_blank');
+        }, 1500);
+
+        // Como é background, não há polling específico, mas pode adicionar se necessário
+        btnPGC.disabled = false;  // Re-enable após iniciar
+
+      } catch (err) {
+        status.textContent = 'Erro na conexão PGC: ' + err.message;
+        btnPGC.disabled = false;
+      }
+    });
+
+    btnPNCP.addEventListener('click', async () => {
       // 1. Captura o ano de referência via pop-up (prompt)
       const ano = prompt("Por favor, insira o Ano de Referência (ex: 2025):");
       if (!ano || ano.trim() === "") {
@@ -164,7 +218,7 @@
       // 2. Define o número máximo de páginas (valor fixo ou outro prompt se necessário)
       const max_pages = 200; // Valor padrão, pode ser ajustado
 
-      btn.disabled = true;
+      btnPNCP.disabled = true;
       status.textContent = 'Iniciando...';
 
       try {
@@ -177,7 +231,7 @@
         const data = await resp.json();
         if (!resp.ok) {
           status.textContent = 'Erro ao iniciar: ' + (data.detail || JSON.stringify(data));
-          btn.disabled = false;
+          btnPNCP.disabled = false;
           return;
         }
         sessionId = data.session_id;
@@ -198,7 +252,7 @@
             status.textContent = `Status: ${sdata.status}\nProgresso: ${JSON.stringify(sdata.progress)}`;
             if (sdata.status === 'finalizado' || sdata.status === 'erro' || sdata.status === 'cancelled') {
               clearInterval(poll);
-              btn.disabled = false;
+              btnPNCP.disabled = false;
             }
           } catch (err) {
             console.error(err);
@@ -207,7 +261,7 @@
 
       } catch (err) {
         status.textContent = 'Erro na conexão: ' + err.message;
-        btn.disabled = false;
+        btnPNCP.disabled = false;
       }
     });
   </script>
