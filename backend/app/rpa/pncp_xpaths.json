@@ -1,0 +1,22 @@
+{
+  "login_username": "//input[@id='txtUsuario']",
+  "login_password": "//input[@id='txtSenha']",
+  "login_submit": "//*[@id='btnEntrar']",
+
+  "year_input": "//*[@id='ctl00_ContentPlaceHolder1_txtAno']",
+  "year_submit": "//*[@id='btnAvancar']",
+
+  "menu_consulta": "//*[@id='ctl00_ContentPlaceHolder1_gdvProgramas']",
+
+  "filtro_ano": "//*[@id='ctl00_ContentPlaceHolder1_ddlAno']",
+  "buscar_btn": "//*[@id='ctl00_ContentPlaceHolder1_btnPesquisar']",
+
+  "results_table": "//*[@id='ctl00_ContentPlaceHolder1_gdvProgramas']/tbody",
+  "results_rows": "//*[@id='ctl00_ContentPlaceHolder1_gdvProgramas']/tbody/tr",
+  "row_cols": "./td",
+
+  "pagination_next": "//app-area-governo/div/div[3]/div/div[2]/div/div[1]/div/span[2]/app-item-trabalho/p-dataview/div/p-paginator/div/button[3]",
+  "pagination_disabled_next": "//a[contains(@class,'page-next') and contains(@class,'disabled')]",
+
+  "row_expand_btn": "//p[text()=' Detalhar Documento de Formalização da Demanda ']"
+}

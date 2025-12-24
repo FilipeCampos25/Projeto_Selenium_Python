@@ -1,0 +1,42 @@
+{
+  "login_url": "https://comprasnet.gov.br/seguro/loginPortal.asp",
+  "input_login": { "by": "id", "value": "txtLogin" },
+  "input_password": { "by": "id", "value": "txtSenha" },
+  "btn_login": { "by": "xpath", "value": "//button[contains(.,'Entrar')]" },
+  "link_pgc": { "by": "xpath", "value": "//a[contains(.,'Planejamento e Gerenciamento de Contratações') or contains(.,'PGC')]" },
+
+  "spinner": { "by": "xpath", "value": "//div[@id='spinner'] | //body/app-root/ng-http-loader/div[@id='spinner']" },
+
+  "pca_dropdown": { "by": "xpath", "value": "//p-dropdown[@placeholder='Selecione PCA']" },
+  "pca_dropdown_toggle": { "by": "xpath", "value": "//p-dropdown[@placeholder='Selecione PCA']//div[contains(@class,'p-dropdown-label') or contains(@class,'p-dropdown-trigger')]" },
+
+  "pca_option_template": { "by": "xpath", "value": "//li[starts-with(@aria-label,'PCA {ano_ref}')" },
+
+  "button_formacao_pca": { "by": "xpath", "value": "//button[.//span[text()='Formação do PCA'] or contains(.,'Formação do PCA')]" },
+
+  "minhauasg_table": { "by": "xpath", "value": "//div[@id='minhauasg']//table" },
+  "table_rows": { "by": "xpath", "value": "//div[@id='minhauasg']//table//tbody/tr" },
+  "table_row_first_link": { "by": "xpath", "value": ".//a | .//button" },
+
+  "paginator_next": { "by": "xpath", "value": "//button[contains(@class,'p-paginator-next') and not(contains(@class,'p-disabled'))]" },
+  "paginator_prev": { "by": "xpath", "value": "//button[contains(@class,'p-paginator-prev') and not(contains(@class,'p-disabled'))]" },
+  "paginator_first": { "by": "xpath", "value": "//button[contains(@class,'p-paginator-first') and not(contains(@class,'p-disabled'))]" },
+  "paginator_last": { "by": "xpath", "value": "//button[contains(@class,'p-paginator-last') and not(contains(@class,'p-disabled'))]" },
+  "paginator_pages": { "by": "xpath", "value": "//span[@class='p-paginator-pages' or contains(@class,'p-paginator-pages')]/button" },
+
+  "detail_button_text": { "by": "xpath", "value": "//p[text()=' Detalhar Documento de Formalização da Demanda '] | //button[.='Detalhar' or contains(.,'Detalhar')]" },
+
+  "modal_container": { "by": "xpath", "value": "//div[contains(@class,'conteudo-modal-rolante') or contains(@class,'modal-content') or contains(@class,'ui-dialog-content')]" },
+
+  "modal_field_generic": { "by": "xpath", "value": "//div[contains(@class,'conteudo-modal-rolante')]//etp-fieldset//div//p" },
+
+  "modal_dfd_image": { "by": "xpath", "value": "//div[contains(@class,'conteudo-modal-rolante')]//img[contains(@src,'dfd') or contains(@src,'document') or contains(@src,'pdf')]" },
+
+  "modal_close_button": { "by": "xpath", "value": "//span/button[text()='Fechar'] | //button[.//span[text()='Fechar'] or contains(.,'Fechar')]" },
+
+  "dfd_image_xpath": { "by": "xpath", "value": "//img[contains(@src,'dfd') or contains(@src,'document') or contains(@src,'.pdf')]" },
+
+  "text_exact": { "by": "xpath", "value": "//*[text()='{text}']" },
+
+  "__notes": "Este arquivo contém templates. Substitua {ano_ref} dinamicamente no scraper."
+}

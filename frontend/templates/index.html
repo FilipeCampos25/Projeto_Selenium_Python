@@ -1,0 +1,64 @@
+<!doctype html>
+<html lang="pt-BR">
+<head>
+  <meta charset="utf-8" />
+  <title>Teste Coleta PNCP</title>
+  <meta name="viewport" content="width=device-width,initial-scale=1" />
+  <style>
+    body { font-family: Inter, system-ui, -apple-system, "Segoe UI", Roboto, "Helvetica Neue", Arial; padding: 2rem; max-width: 720px; margin: auto; }
+    input, button { font-size: 1rem; padding: .5rem; margin: .25rem 0; width: 100%; box-sizing: border-box; }
+    .log { white-space: pre-wrap; background: #f7f7f8; padding: 1rem; border-radius: 8px; margin-top: 1rem; max-height: 50vh; overflow: auto; }
+    label { font-weight: 600; margin-top: .5rem; display: block; }
+  </style>
+</head>
+<body>
+  <h1>Teste: Coletar PNCP</h1>
+  <p>Digite um número PNCP e clique em "Coletar". Isso chamará <code>POST /api/pncp/coletar</code> e mostrará a resposta.</p>
+
+  <label for="numero">Número (ex: 123456)</label>
+  <input id="numero" placeholder="Digite o número..." />
+
+  <button id="coletar">Coletar</button>
+  <button id="limpar">Limpar</button>
+
+  <h2>Resultado</h2>
+  <div id="resultado" class="log">Nenhuma ação ainda.</div>
+
+  <script>
+    const resultado = document.getElementById('resultado');
+    const numeroInput = document.getElementById('numero');
+    
+    document.getElementById('coletar').addEventListener('click', async () => {
+      const numero = numeroInput.value.trim();
+      if (!numero) { resultado.textContent = "Por favor informe um número."; return; }
+
+      resultado.textContent = "Enviando requisição...";
+
+      try {
+        const form = new URLSearchParams();
+        form.append('numero', numero);
+
+        const resp = await fetch('/api/pncp/coletar', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+          body: form.toString()
+        });
+
+        const text = await resp.text();
+        let pretty;
+        try { pretty = JSON.stringify(JSON.parse(text), null, 2); }
+        catch(e){ pretty = text; }
+
+        resultado.textContent = `HTTP ${resp.status}\n\n${pretty}`;
+      } catch (err) {
+        resultado.textContent = "Erro na requisição: " + err;
+      }
+    });
+
+    document.getElementById('limpar').addEventListener('click', () => {
+      numeroInput.value = ''; 
+      resultado.textContent = 'Limpo.';
+    });
+  </script>
+</body>
+</html>

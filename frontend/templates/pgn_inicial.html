@@ -1,0 +1,215 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+  <meta charset="utf-8" />
+  <title>Sistema de Coleta PGC/PNCP</title>
+  <meta name="viewport" content="width=device-width,initial-scale=1" />
+  <style>
+        /* Reset leve e base */
+    * {
+      box-sizing: border-box;
+    }
+
+    body {
+      font-family: Inter, system-ui, -apple-system, "Segoe UI", Roboto, Arial, sans-serif;
+      background: linear-gradient(180deg, #f4f9ff 0%, #ffffff 100%);
+      padding: 2rem;
+      max-width: 900px;
+      margin: auto;
+      color: #1f2937;
+    }
+
+    /* Título */
+    h1 {
+      font-size: 1.9rem;
+      font-weight: 700;
+      color: #1e3a8a;
+      margin-bottom: 0.5rem;
+    }
+
+    /* Texto descritivo */
+    p {
+      color: #374151;
+      line-height: 1.6;
+      margin-bottom: 1.5rem;
+    }
+
+    /* Botões */
+    button {
+      font-size: 1rem;
+      font-weight: 600;
+      padding: 0.75rem 1rem;
+      margin-top: 0.75rem;
+      width: 100%;
+      border-radius: 10px;
+      border: none;
+      cursor: pointer;
+      background: linear-gradient(135deg, #3b82f6, #2563eb);
+      color: #ffffff;
+      box-shadow: 0 8px 20px rgba(37, 99, 235, 0.25);
+      transition: all 0.25s ease;
+    }
+
+    button:hover {
+      transform: translateY(-1px);
+      box-shadow: 0 12px 28px rgba(37, 99, 235, 0.35);
+    }
+
+    button:disabled {
+      background: #93c5fd;
+      cursor: not-allowed;
+      box-shadow: none;
+      transform: none;
+    }
+
+    /* Área de status / log */
+    .log {
+      white-space: pre-wrap;
+      background: #f8fafc;
+      padding: 1rem 1.2rem;
+      border-radius: 12px;
+      margin-top: 1.2rem;
+      max-height: 40vh;
+      overflow: auto;
+      font-size: 0.95rem;
+      color: #1f2937;
+      border: 1px solid #e2e8f0;
+      box-shadow: inset 0 0 0 1px rgba(59, 130, 246, 0.05);
+    }
+
+    /* Link do VNC */
+    .vnc-link {
+      display: inline-block;
+      margin-top: 0.8rem;
+      background: linear-gradient(135deg, #22c55e, #16a34a);
+      color: #ffffff;
+      padding: 0.6rem 1rem;
+      border-radius: 10px;
+      text-decoration: none;
+      font-weight: 600;
+      box-shadow: 0 6px 16px rgba(34, 197, 94, 0.3);
+      transition: all 0.25s ease;
+    }
+
+    .vnc-link:hover {
+      transform: translateY(-1px);
+      box-shadow: 0 10px 24px rgba(34, 197, 94, 0.4);
+    }
+
+    /* Scroll do log mais elegante */
+    .log::-webkit-scrollbar {
+      width: 8px;
+    }
+
+    .log::-webkit-scrollbar-track {
+      background: transparent;
+    }
+
+    .log::-webkit-scrollbar-thumb {
+      background-color: #c7d2fe;
+      border-radius: 4px;
+    }
+
+    .log::-webkit-scrollbar-thumb:hover {
+      background-color: #a5b4fc;
+    }
+
+  </style>
+</head>
+<body>
+  <h1>🚀 Sistema de Coleta PGC/PNCP</h1>
+  <p>O navegador será aberto automaticamente. Após clicar em "Iniciar Coleta", abra o VNC para fazer o login manual.</p>
+
+  <!-- Removendo os campos de input, pois usaremos um prompt/pop-up -->
+  <!--
+  <label for="ano_ref">Ano de Referência *</label>
+  <input id="ano_ref" placeholder="Ex: 2025" />
+
+  <label for="max_pages">Máx. páginas</label>
+  <input id="max_pages" type="number" value="200" min="1" max="1000" />
+  -->
+
+  <button id="btnIniciar">🚀 Iniciar Coleta</button>
+
+  <div id="status" class="log">Nenhuma ação ainda.</div>
+  <a
+    id="vncLink"
+    class="vnc-link" 
+    href="http://localhost:7900" 
+    target="_blank" 
+    style="display:none;">🖥️ Abrir VNC (ver navegador)
+  </a>
+
+  <script>
+    const btn = document.getElementById('btnIniciar');
+    const status = document.getElementById('status');
+    const vncLink = document.getElementById('vncLink');
+
+    let sessionId = null;
+    let poll = null;
+
+    btn.addEventListener('click', async () => {
+      // 1. Captura o ano de referência via pop-up (prompt)
+      const ano = prompt("Por favor, insira o Ano de Referência (ex: 2025):");
+      if (!ano || ano.trim() === "") {
+        alert('O Ano de Referência é obrigatório para iniciar a coleta.');
+        return;
+      }
+      const ano_ref = parseInt(ano.trim());
+      if (isNaN(ano_ref) || ano_ref < 2000 || ano_ref > 2100) {
+        alert('Ano de Referência inválido. Por favor, insira um ano válido (ex: 2025).');
+        return;
+      }
+
+      // 2. Define o número máximo de páginas (valor fixo ou outro prompt se necessário)
+      const max_pages = 200; // Valor padrão, pode ser ajustado
+
+      btn.disabled = true;
+      status.textContent = 'Iniciando...';
+
+      try {
+        const resp = await fetch('/api/pncp/iniciar', {
+          method: 'POST',
+          headers: {'Content-Type':'application/json'},
+          // Envia o ano_ref capturado pelo pop-up
+          body: JSON.stringify({ ano_ref: ano_ref, max_pages: max_pages, headless: false })
+        });
+        const data = await resp.json();
+        if (!resp.ok) {
+          status.textContent = 'Erro ao iniciar: ' + (data.detail || JSON.stringify(data));
+          btn.disabled = false;
+          return;
+        }
+        sessionId = data.session_id;
+        status.textContent = 'Navegador aberto. Por favor, abra o VNC e faça o login manual no browser.';
+
+        // Aqui ele redireciona para o VNC após um pequeno delay
+        setTimeout(() => {
+          window.open('http://localhost:7900', '_blank');
+        }, 1500);
+        vncLink.style.display = 'inline-block';
+
+        // Inicia polling (mantido para acompanhar o status da coleta)
+        poll = setInterval(async () => {
+          try {
+            // Assumindo que existe um endpoint de status para a sessão
+            const sresp = await fetch(`/api/pncp/status/${sessionId}`);
+            const sdata = await sresp.json();
+            status.textContent = `Status: ${sdata.status}\nProgresso: ${JSON.stringify(sdata.progress)}`;
+            if (sdata.status === 'finalizado' || sdata.status === 'erro' || sdata.status === 'cancelled') {
+              clearInterval(poll);
+              btn.disabled = false;
+            }
+          } catch (err) {
+            console.error(err);
+          }
+        }, 2000);
+
+      } catch (err) {
+        status.textContent = 'Erro na conexão: ' + err.message;
+        btn.disabled = false;
+      }
+    });
+  </script>
+</body>
+</html>

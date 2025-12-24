@@ -1,0 +1,72 @@
+{
+  "comment": "XPaths extraídos do código VBA para replicar exatamente a mesma lógica",
+  
+  "login": {
+    "url": "http://www.comprasnet.gov.br/seguro/loginPortal.asp",
+    "btn_expand_governo": "//button[@class='br-button circle expand governo']",
+    "input_login_id": "txtLogin",
+    "input_senha_id": "txtSenha",
+    "btn_submit": "//button[@onclick='frmLoginGoverno_submit(); return false;']",
+    "text_processando": "//div[@class='texto']/div[2][text()=' Estamos processando a sua solicitação. ']",
+    "span_pgc_title": "//span[text()='Planejamento e Gerenciamento de Contratações']",
+    "div_pgc_access": "//div/p[2][text()='PGC']",
+    "window_title": "Compras.gov.br - Fase Interna"
+  },
+  
+  "spinner": {
+    "main": "//body/app-root/ng-http-loader/div[@id='spinner']",
+    "alternative": "//div[@id='spinner']"
+  },
+  
+  "pca_selection": {
+    "dropdown_pca": "//p-dropdown[@placeholder='Selecione PCA']",
+    "li_pca_ano_template": "//li[starts-with(@aria-label,'PCA {ano} -')]",
+    "radio_minha_uasg_id": "minha-uasg",
+    "btn_primary_circle": "//button[@class='br-button primary circle']"
+  },
+  
+  "pagination": {
+    "btn_last": "//div[@id='minhauasg']/app-artefato-list-resultado/div/div/div/p-table/div/p-paginator/div/button[@class='p-ripple p-element p-paginator-last p-paginator-element p-link ng-star-inserted']",
+    "btn_first": "//div[@id='minhauasg']/app-artefato-list-resultado/div/div/div/p-table/div/p-paginator/div/button[@class='p-ripple p-element p-paginator-first p-paginator-element p-link ng-star-inserted']",
+    "btn_next": "//div[@id='minhauasg']/app-artefato-list-resultado/div/div/div/p-table/div/p-paginator/div/button[@class='p-ripple p-element p-paginator-next p-paginator-element p-link']",
+    "btns_pages": "//div[@id='minhauasg']/app-artefato-list-resultado/div/div/div/p-table/div/p-paginator/div/span[@class='p-paginator-pages ng-star-inserted']/button",
+    "btn_current_page": "//button[@class='p-ripple p-element p-paginator-page p-paginator-element p-link ng-star-inserted p-highlight']"
+  },
+  
+  "table": {
+    "main": "//div[@id='minhauasg']/app-artefato-list-resultado/div/div/div/p-table/div/div[@class='p-datatable-wrapper']/table",
+    "th_sort_column_4": "//div[@id='minhauasg']/app-artefato-list-resultado/div/div/div/p-table/div/div/table/thead/tr/th[4]",
+    "tbody": "//div[@id='minhauasg']/app-artefato-list-resultado/div/div/div/p-table/div/div[@class='p-datatable-wrapper']/table/tbody",
+    "rows": "//div[@id='minhauasg']/app-artefato-list-resultado/div/div/div/p-table/div/div[@class='p-datatable-wrapper']/table/tbody/tr"
+  },
+  
+  "table_columns": {
+    "comment": "Índices baseados no VBA: data(r, 4)=DFD, data(r, 6)=Requisitante, data(r, 7)=Descrição, data(r, 8)=Valor, data(r, 9)=Situação",
+    "index_dfd": 4,
+    "index_requisitante": 6,
+    "index_descricao": 7,
+    "index_valor": 8,
+    "index_situacao": 9
+  },
+  
+  "dfd_details": {
+    "url_template": "https://cnetmobile.estaleiro.serpro.gov.br/comprasnet-artefatos-web/artefatos/view?identificador=110511{dfd_id}&autoriza=e&tipo=DFD",
+    "title": "//p[text()=' Detalhar Documento de Formalização da Demanda ']",
+    "conclusao": "//div[@class='conteudo-modal-rolante']/etp-fieldset/div/div[2]/div[1]/div[2]/p",
+    "editor": "//div[@class='conteudo-modal-rolante']/etp-fieldset/div/div[2]/div[1]/div[4]/p",
+    "responsaveis_btn": "//div[@class='conteudo-modal-rolante']/etp-fieldset/div/div[7]/button",
+    "responsaveis_table": "//div[@class='conteudo-modal-rolante']/etp-fieldset/div/div[8]/p-table/div/div/table",
+    "justificativa": "//div[@class='conteudo-modal-rolante']/etp-fieldset/div/div[3]",
+    "icone_fieldset": "//div[@class='conteudo-modal-rolante']/etp-fieldset/div/div[1]"
+  },
+  
+  "buttons": {
+    "fechar": "//span/button[text()='Fechar']"
+  },
+  
+  "constants": {
+    "ano_ref": "2025",
+    "pta_cap": "035/25",
+    "dfd_placeholder": "000..."
+  }
+}

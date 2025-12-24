@@ -1,0 +1,65 @@
+# requirements_refactored.txt
+# Dependências Python para Sistema de Coleta PGC/PNCP v2.0
+
+# ==================== CORE ====================
+# Web Framework
+fastapi==0.104.1
+uvicorn[standard]==0.24.0
+pydantic==2.5.0
+pydantic-settings==2.1.0
+Jinja2==3.1.3
+
+# Web Scraping
+selenium==4.15.2
+
+# Database
+sqlalchemy==2.0.23
+psycopg2-binary==2.9.9
+alembic==1.12.1
+
+# OCR
+pytesseract==0.3.10
+Pillow==10.1.0
+pdf2image==1.16.3
+
+# ==================== UTILITIES ====================
+# HTTP Requests
+requests==2.31.0
+aiofiles==23.2.1
+
+# Configuration
+python-dotenv==1.0.0
+python-multipart==0.0.6
+
+# Date/Time
+python-dateutil==2.8.2
+
+# CLI
+click==8.1.7
+
+# Debug
+debugpy>=1.6.0
+
+
+# ==================== DEVELOPMENT ====================
+# Testing (opcional, comentar se não usar)
+# pytest==7.4.3
+# pytest-cov==4.1.0
+# pytest-asyncio==0.21.1
+
+# Linting (opcional, comentar se não usar)
+# black==23.11.0
+# flake8==6.1.0
+# mypy==1.7.1
+# isort==5.12.0
+
+# ==================== NOTAS ====================
+# - Remova 'time' de requirements.txt (módulo built-in)
+# - Para desenvolvimento, instale também requirements-dev.txt
+# - Para produção, considere versões fixas (==) ao invés de (>=)
+#
+# Instalação:
+#   pip install -r requirements_refactored.txt
+#
+# Atualização:
+#   pip install --upgrade -r requirements_refactored.txt

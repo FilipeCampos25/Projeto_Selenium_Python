@@ -1,0 +1,89 @@
+version: '3.8'
+
+services:
+  db:
+    image: postgres:15-alpine
+    container_name: projeto-db
+    environment:
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: postgres
+      POSTGRES_DB: projeto
+    volumes:
+      - pg_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres -d projeto"]
+      interval: 10s
+      timeout: 5s
+      retries: 20
+      start_period: 25s
+    networks:
+      - projnet
+
+  selenium:
+    image: selenium/standalone-chrome:4.21.0
+    container_name: selenium-chrome
+    shm_size: 2gb
+    ports:
+      - "4444:4444"   # Selenium WebDriver
+      - "7900:7900"   # noVNC
+    environment:
+      SE_VNC_NO_PASSWORD: "true"
+      SE_NODE_MAX_SESSIONS: 1
+      SE_NODE_OVERRIDE_MAX_SESSIONS: "true"
+      SE_START_URL: "https://pncp.gov.br/"
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:4444/wd/hub/status"]
+      interval: 10s
+      timeout: 5s
+      retries: 12
+      start_period: 20s
+    networks:
+      - projnet
+
+  web:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: projeto-web
+
+    env_file:
+      - backend/.env
+
+    environment:
+      - DEBUG_MODE=true
+      - DEBUGPY=1
+      - DEBUG_WAIT_FOR_CLIENT=true
+      - PYTHONUNBUFFERED=1
+      - SELENIUM_MODE=remote
+      - SELENIUM_REMOTE_URL=http://selenium:4444/wd/hub
+
+    ports:
+      - "8000:8000"
+      - "5678:5678"
+
+    volumes:
+      - ./backend:/app/backend
+      - ./frontend:/app/frontend
+
+    depends_on:
+      db:
+        condition: service_healthy
+      selenium:
+        condition: service_healthy
+
+    restart: unless-stopped
+    deploy:
+      resources:
+        limits:
+          memory: 2g
+        reservations:
+          memory: 512m
+    networks:
+      - projnet
+
+volumes:
+  pg_data:
+
+networks:
+  projnet:
+    driver: bridge
