@@ -1,55 +1,54 @@
-# Arquitetura — projeto_refatorado_final
+# Arquitetura do Sistema
 
-## Visão geral
-Este documento descreve a arquitetura de alto nível para a plataforma de raspagem refatorada (baseada no código fornecido). O sistema extrai conjuntos de dados de compras públicas (PGC, PNCP, PTA, etc.) de portais públicos usando Selenium, valida e transforma os resultados em serviços Python e persiste em PostgreSQL via SQLAlchemy. A API de orquestração e acesso é implementada com FastAPI. Os serviços são conteinerizados com Docker e orquestrados com docker-compose.
+## Visão Geral
+Este projeto é uma adaptação Python de um sistema VBA para scraping de dados de compras públicas brasileiras (portais PGC e PNCP). Utiliza Selenium para automação web, FastAPI para API de orquestração, PostgreSQL para persistência de dados e Docker para conteinerização. O foco é replicar exatamente a lógica VBA original enquanto moderniza para uma arquitetura modular.
 
-## Componentes
-- **Serviço RPA / Scraper**
-  - Local: `backend/app/rpa` (por exemplo `pncp_scraper`).
-  - Executa Selenium (Chrome) para navegação e extração.
-  - Responsabilidades: navegar, extrair, validação inicial e retorno de JSON estruturado.
+## Componentes Principais
 
-- **API / Orquestração (FastAPI)**
-  - Local: `backend/app`.
-  - Routers observados: `pncp`, `pages`, `health`.
-  - Expõe endpoints para acionar scrapes, checar saúde e servir assets estáticos do frontend.
-  - Orquestra execução dos scrapers e delega persistência ao repositório de dados.
+### Scrapers RPA
+- **Localização**: `backend/app/rpa/`
+- **Responsabilidades**: Navegação automatizada nos portais governamentais usando Selenium Chrome.
+- **Módulos principais**:
+  - `pgc_scraper_vba_logic.py`: Replica a lógica VBA para scraping do PGC.
+  - `pncp_scraper.py`, `pncp_downloader.py`, etc.: Para PNCP.
+- **Configurações**: XPaths armazenados em JSON (e.g., `pgc_xpaths.json`).
+- **Saída**: JSON estruturado com dados extraídos e metadados.
 
-- **Camada de Persistência**
-  - Banco de dados PostgreSQL (containerizado).
-  - Modelos e repositórios SQLAlchemy em `backend/app/db`.
-  - Tabela principal observada: `coletas` (armazena JSON bruto/normalizado, metadados, timestamps).
-  - Migrações como arquivos SQL em `db/migrations/`.
+### API de Orquestração (FastAPI)
+- **Localização**: `backend/app/api/routers/`
+- **Routers**:
+  - `pncp.py`: Endpoints para iniciar scrapes PNCP.
+  - `pgc.py`: Para PGC.
+  - `health.py`: Verificação de saúde.
+  - `pages.py`: Servir páginas estáticas.
+- **Função**: Recebe solicitações HTTP, aciona scrapers e persiste resultados.
 
-- **Execução de Jobs / Workers**
-  - Jobs de scraping são, por enquanto, de curta duração e podem ser executados de forma síncrona via API.
-  - O `docker-compose` inclui um serviço `selenium` (standalone-chrome) para sessões remotas de navegador.
+### Camada de Persistência
+- **Banco**: PostgreSQL conteinerizado.
+- **Modelos**: SQLAlchemy com JSONB para dados flexíveis.
+- **Repositórios**: `backend/app/db/repositories.py` - Funções como `salvar_pncp()` para inserir dados.
+- **Migrações**: Scripts SQL manuais em `db/migrations/`.
 
-- **Frontend**
-  - Templates estáticos servidos pelo router `pages` do FastAPI.
-  - Interface mínima para checar status e acionar scrapes manualmente.
+### Serviços
+- **Localização**: `backend/app/services/`
+- **Função**: Camada intermediária entre API e scrapers, aplicando lógica de negócio.
 
-- **Infraestrutura**
-  - `Dockerfile` para construir a imagem do app (base `python:3.11-slim`).
-  - `docker-compose.yml` definindo serviços `web`, `db` e `selenium`.
+### Infraestrutura
+- **Docker Compose**: Serviços `web` (FastAPI), `db` (Postgres), `selenium` (Chrome standalone).
+- **Configuração**: Pydantic settings em `config.py`, variáveis de ambiente.
 
-## Fluxo de dados
-1. Usuário ou scheduler aciona endpoint de scrape no FastAPI.
-2. FastAPI invoca o scraper.
-3. Scraper retorna JSON estruturado (registros + metadados).
-4. Serviço valida/normaliza os dados e grava no Postgres via repositório.
-5. Resultados ficam acessíveis via endpoints adicionais ou exportáveis.
+## Fluxo de Dados
+1. Usuário aciona endpoint via API (e.g., POST /api/pncp/iniciar).
+2. FastAPI chama serviço, que invoca scraper.
+3. Scraper usa Selenium para navegar, extrair dados e retornar JSON.
+4. Dados são validados e salvos no Postgres via repositório.
+5. Resultados acessíveis via queries ou exports.
 
-## Segurança & Rede
-- Conexão com DB via variável de ambiente `DATABASE_URL`; em Compose, use a rede interna do Docker.
-- Limitar exposição do Selenium: somente o serviço app deve se conectar ao container Selenium.
-- Segredos devem ser fornecidos via variáveis de ambiente ou secret manager (não commitar em repositórios).
+## Segurança e Configuração
+- Credenciais via variáveis de ambiente.
+- Selenium isolado em container próprio.
+- Logs estruturados com JSON.
 
 ## Extensibilidade
-- Adicionar scrapers como plugins modulares (um módulo por portal alvo).
-- Substituir chamadas síncronas por fila de tarefas (Celery/RQ) para escalabilidade.
-
-## Limitações conhecidas (baseadas no código)
-- Tratamento genérico de erros nos routers que pode mascarar causas reais.
-- Falta de testes automatizados e tipagem incompleta.
-- Migrações gerenciadas como SQL estático (considerar Alembic para melhorar).
+- Novos scrapers como módulos em `rpa/`.
+- Possibilidade de adicionar filas (Celery) para scrapes assíncronos.

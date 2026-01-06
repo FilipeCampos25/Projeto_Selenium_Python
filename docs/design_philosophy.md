@@ -1,27 +1,28 @@
 # Filosofia de Design
 
 ## Objetivos
-- **Confiabilidade:** Garantir que as raspagens sejam previsíveis e que falhas sejam visíveis.
-- **Manutenibilidade:** Tornar scrapers modulares, com funções pequenas e contratos claros.
-- **Testabilidade:** Permitir testar lógica sem navegador real .
-- **Observabilidade:** Logs estruturados, métricas e erros claros.
-- **Reprodutibilidade:** Ambientes conteinerizados (docker-compose) para paridade dev/prod.
+- **Fidelidade ao VBA**: Replicar exatamente a lógica, XPaths e padrões de espera do código VBA original para garantir compatibilidade.
+- **Confiabilidade**: Scrapes previsíveis com tratamento robusto de erros e waits adequados.
+- **Manutenibilidade**: Código modular, com separação clara de responsabilidades.
+- **Observabilidade**: Logs estruturados em JSON para debugging e monitoramento.
+- **Reprodutibilidade**: Ambientes conteinerizados para consistência entre dev e prod.
 
 ## Princípios
-1. **Responsabilidade única:** Cada módulo de scraper trata um único portal e retorna um schema JSON definido.
-2. **Separação de responsabilidades:** RPA, transformação/validação, persistência e orquestração são camadas separadas.
-3. **Fail fast e reporting claro:** Validação deve expor erros acionáveis; evitar engolir exceções silenciosamente.
-4. **Idempotência:** Persistência no BD deve ser idempotente ou usar chaves de deduplicação (ex.: fonte + id_fonte + data).
-5. **Contratos observáveis:** Endpoints documentados e logs em formato estruturado (JSON).
-6. **Config como dados:** Seletors de site, timeouts e parâmetros devem ficar em configs (YAML/ENV), não espalhados no código.
+1. **Responsabilidade Única**: Cada scraper trata um portal específico e retorna JSON padronizado.
+2. **Separação de Camadas**: RPA (scraping), API (orquestração), DB (persistência) isoladas.
+3. **Fail Fast**: Erros expostos claramente; evitar exceções silenciosas.
+4. **Configuração Externa**: XPaths, timeouts e credenciais em arquivos JSON ou env vars.
+5. **Idempotência**: Persistência evita duplicatas via chaves únicas.
+6. **Testabilidade**: Lógica isolável para testes unitários e integração.
 
-## Estratégia de testes
-- Testes unitários para transformação e validação.
-- Testes de integração com scrapers e Postgres efêmero (pytest + testcontainers ou perfil de teste docker-compose).
-- Testes end-to-end com sessão Selenium gravada ou ambiente de homologação.
+## Padrões de Código
+- Tipagem com type hints.
+- Exceções customizadas para domínio.
+- Injeção de dependências (FastAPI Depends).
+- Linters: flake8, black, mypy.
+- Logs: structured JSON logging.
 
-## Padrões de código
-- Anotações de tipo em módulos críticos.
-- Exceções explícitas (classes de erro de domínio).
-- Injeção de dependência para sessão do DB (FastAPI `Depends`).
-- Linters (flake8/pylint), formatador (black) e checagem de tipos (mypy).
+## Estratégia de Testes
+- Unitários para utilitários e validação.
+- Integração com DB efêmero.
+- E2E com Selenium em container.

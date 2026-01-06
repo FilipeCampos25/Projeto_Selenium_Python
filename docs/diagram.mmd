@@ -1,15 +1,15 @@
-%% Mermaid diagrama de arquitetura do sistema
-%% Salvar como `diagram.mmd` ou incorporar em markdown com ```mermaid ... ```
+%% Diagrama de Arquitetura
 graph LR
-  A[Usuário / Agendador] -->|HTTP| B[FastAPI (web)]
-  B --> C[Serviço Scraper (Selenium )]
-  C --> D[Pós-processamento & Validação]
-  D --> E[PostgreSQL]
-  B --> F[Frontend Estático]
-  B --> G[Health & Métricas]
-  subgraph infra
-    H[selenium standalone-chrome]
-    I[postgres]
+  A[Usuário] -->|HTTP| B[FastAPI API]
+  B --> C[Serviços (pncp_service, pgc_service)]
+  C --> D[Scrapers RPA (pgc_scraper_vba_logic, pncp_scraper)]
+  D --> E[Selenium Chrome]
+  C --> F[Repositórios DB]
+  F --> G[PostgreSQL]
+  B --> H[Frontend Templates]
+  B --> I[Health Checks]
+
+  subgraph Infra
+    E
+    G
   end
-  C --> H
-  E --> I
