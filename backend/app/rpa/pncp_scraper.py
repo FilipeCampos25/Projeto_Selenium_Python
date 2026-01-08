@@ -155,7 +155,11 @@ class PNCPScraperRefactored(BasePortalScraper):
         time.sleep(2)
         logger.info("Pronto para login manual.")
 
+<<<<<<< HEAD
     def wait_manual_login(self, timeout: int = 180) -> bool:
+=======
+    def wait_manual_login(self, timeout: int = 300) -> bool:
+>>>>>>> 5a69f05 (atualização em timeouts e pequenos ajustes para o funcionamento | versão 1 . 6)
         """
         Função wait_manual_login:
         Executa a lógica principal definida nesta função.
