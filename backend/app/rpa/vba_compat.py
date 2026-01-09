@@ -9,6 +9,7 @@ from selenium.webdriver.common.by import By
 from selenium.webdriver.support.ui import WebDriverWait
 from selenium.webdriver.support import expected_conditions as EC
 from selenium.common.exceptions import TimeoutException, NoSuchWindowException
+from .driver_global import get_driver
 
 class CheckpointFailureError(Exception):
     """Exceção levantada quando um Checkpoint Semântico falha."""
@@ -18,21 +19,37 @@ from .config_vba import VBAConfig
 logger = logging.getLogger(__name__)
 
 class VBACompat:
-    def __init__(self, driver):
-        self.driver = driver
+    def __init__(self, driver=None):
+        # Se o driver não for passado, usa o global
+        self._driver = driver
         self.last_handle = None
+
+    @property
+    def driver(self):
+        if self._driver:
+            return self._driver
+        return get_driver()
 
     def slow_down(self):
         """Aplica espera baseada no modo de operação (Item 13)."""
         time.sleep(VBAConfig.get_wait_time())
 
     def wait_for_new_window(self, original_handles: set, timeout: int = 10) -> bool:
-        """Espera por uma nova janela/aba ser aberta (Item 7)."""
+        """
+        Espera por uma nova janela/aba ser aberta (Item 7).
+        Corrigido para comparar handles em vez de apenas contar a quantidade.
+        """
         try:
-            WebDriverWait(self.driver, timeout).until(
-                lambda driver: len(driver.window_handles) > len(original_handles)
-            )
-            return True
+            def check_new_window(d):
+                current_handles = set(d.window_handles)
+                new_handles = current_handles - original_handles
+                return list(new_handles)[0] if new_handles else False
+
+            new_window_handle = WebDriverWait(self.driver, timeout).until(check_new_window)
+            if new_window_handle:
+                logger.info(f"Nova janela detectada: {new_window_handle}")
+                return True
+            return False
         except TimeoutException:
             logger.error("Timeout esperando por nova janela.")
             return False

@@ -19,6 +19,7 @@ from selenium.common.exceptions import (
 )
 
 from backend.app.rpa.driver_factory import create_driver
+from backend.app.rpa.driver_global import get_driver, set_driver
 
 logger = logging.getLogger(__name__)
 
@@ -73,9 +74,19 @@ class BasePortalScraper(ABC):
         self.remote_url = remote_url
 
         # PATCH 1 — permitir driver externo
-        self.driver: Optional[WebDriver] = driver
-        if self.driver is None:
+        self._driver: Optional[WebDriver] = driver
+        if self._driver is None:
             self._init_driver()
+
+    @property
+    def driver(self) -> WebDriver:
+        if self._driver:
+            return self._driver
+        return get_driver()
+
+    @driver.setter
+    def driver(self, value: WebDriver):
+        self._driver = value
 
     # --------------------------------------------------------
     # Driver
@@ -85,8 +96,10 @@ class BasePortalScraper(ABC):
         Função _init_driver:
         Executa a lógica principal definida nesta função.
         """
-        if self.driver is None:
-            self.driver = self._build_driver(self.headless, self.remote_url)
+        if self._driver is None:
+            self._driver = self._build_driver(self.headless, self.remote_url)
+            # Define como global se for o driver principal criado
+            set_driver(self._driver)
 
     def _build_driver(self, headless: bool, remote_url: Optional[str]) -> WebDriver:
         """
@@ -239,9 +252,12 @@ class BasePortalScraper(ABC):
         Executa a lógica principal definida nesta função.
         """
         try:
-            if self.driver:
-                self.driver.quit()
-                self.driver = None
+            if self._driver:
+                self._driver.quit()
+                self._driver = None
+                # Opcional: Limpar global se este for o driver global
+                from backend.app.rpa.driver_global import close_driver
+                close_driver()
         except Exception as e:
             logger.warning(f"Erro ao fechar driver: {e}")
 
