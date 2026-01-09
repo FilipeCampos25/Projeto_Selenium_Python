@@ -101,10 +101,13 @@ class PGCScraperVBA:
             return []
         self.compat.testa_spinner()
 
-        # Coleta de dados com paginação
+        # Coleta de dados com paginação (Replicando VBA: Do While ExisteBotaoProximaPagina)
         all_data = []
         pos = 1
-        posM = self._get_total_pages()
+        
+        # Primeiro, calcula o total de páginas no VBA original (contando até o final)
+        posM = self._count_total_pages()
+        logger.info(f"Total de páginas detectadas: {posM}")
         
         while pos <= posM:
             logger.info(f"Coletando página {pos} de {posM}...")
@@ -112,21 +115,48 @@ class PGCScraperVBA:
             all_data.extend(page_data)
             
             if pos < posM:
-                if not self._go_to_next_page(pos + 1):
+                if not self._go_to_next_page():
+                    logger.warning(f"Parado na página {pos}. Botão próxima não disponível ou erro na navegação.")
                     break
             pos += 1
             
         self.data_collected = all_data
         return all_data
 
-    def _get_total_pages(self) -> int:
+    def _count_total_pages(self) -> int:
+        """
+        Replica Do While ExisteBotaoProximaPagina() do VBA.
+        Clica sucessivamente no botão 'próxima' até que ele desapareça,
+        contando o número de páginas.
+        """
+        contador = 1
+        original_rows_count = len(self.driver.find_elements(By.XPATH, XPATHS["table"]["rows"]))
+        
+        while True:
+            try:
+                # Verifica se o botão próxima existe
+                btn_next = self.driver.find_element(By.XPATH, XPATHS["pagination"]["btn_next"])
+                # Verifica se está habilitado (classe 'p-disabled' significa que está desabilitado)
+                if 'p-disabled' in btn_next.get_attribute('class'):
+                    logger.info(f"Botão próxima desabilitado. Total de páginas: {contador}")
+                    break
+                
+                # Clica próxima
+                self.compat.safe_click(XPATHS["pagination"]["btn_next"])
+                contador += 1
+                
+            except Exception as e:
+                logger.info(f"Erro ao procurar/clicar botão próxima (fim da paginação). Total de páginas: {contador}")
+                break
+        
+        # Volta para página 1
         try:
-            btns = self.driver.find_elements(By.XPATH, XPATHS["pagination"]["btns_pages"])
-            pages = [int(b.text.strip()) for b in btns if b.text.strip().isdigit()]
-            return max(pages) if pages else 1
+            self.compat.safe_click(XPATHS["pagination"]["btn_first"])
+            self.compat.testa_spinner()
         except Exception as e:
-            logger.warning(f"Erro ao calcular total de páginas, assumindo 1: {e}")
-            return 1
+            logger.warning(f"Erro ao voltar para página 1: {e}")
+        
+        return contador
 
     def _read_current_table(self) -> List[Dict[str, Any]]:
         """Lê a tabela atual validando cada linha (Item 8)."""
@@ -154,20 +184,30 @@ class PGCScraperVBA:
                 
         return rows_data
 
-    def _go_to_next_page(self, target_page: int) -> bool:
+    def _go_to_next_page(self) -> bool:
+        """
+        Clica no botão próxima e aguarda a tabela recarregar.
+        Replica o comportamento do VBA: ClicarProximaPagina + EsperarCarregar.
+        """
         try:
-            btn_next = self.driver.find_element(By.XPATH, XPATHS["pagination"]["btn_next"])
-            self.compat.safe_click(XPATHS["pagination"]["btn_next"])
-            # Valida se mudou de página (Item 4.2)
-            checkpoint_page = f"//button[contains(@class, 'p-highlight') and text()='{target_page}']"
-            # O wait_for_checkpoint agora lança exceção, o que garante o bloqueio real
-            self.compat.wait_for_checkpoint(checkpoint_page, timeout=10)
+            # Clica próxima
+            if not self.compat.safe_click(XPATHS["pagination"]["btn_next"]):
+                logger.error("Falha ao clicar botão próxima.")
+                return False
+            
+            # Aguarda a tabela recarregar (checkpoint na tabela)
+            try:
+                self.compat.wait_for_checkpoint(XPATHS["table"]["rows"], timeout=15)
+            except CheckpointFailureError:
+                logger.error("Falha ao aguardar recarga da tabela após clique próxima.")
+                return False
+            
+            # Aguarda spinner desaparecer
+            self.compat.testa_spinner()
             return True
-        except CheckpointFailureError as e:
-            logger.error(f"Falha ao avançar para a página {target_page}. Abortando paginação: {e}")
-            return False
+            
         except Exception as e:
-            logger.error(f"Erro inesperado ao avançar para a página {target_page}: {e}")
+            logger.error(f"Erro inesperado ao avançar para próxima página: {e}")
             return False
 
     def _parse_currency(self, value_str: str) -> float:
