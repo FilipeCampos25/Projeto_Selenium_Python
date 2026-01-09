@@ -44,6 +44,7 @@ class ColetasRepository:
             with self._engine.connect() as conn:
                 conn.execute(text(sql))
                 conn.commit()
+                logger.info("Tabelas do banco de dados verificadas/criadas.")
         except Exception as e:
             logger.error(f"Erro ao criar tabelas: {e}")
 
@@ -54,9 +55,9 @@ class ColetasRepository:
             with self._engine.connect() as conn:
                 conn.execute(sql, {"fonte": fonte, "dados": json.dumps(dados)})
                 conn.commit()
-                logger.info(f"Dados brutos de {fonte} salvos com sucesso.")
+                logger.info(f"Dados brutos de {fonte} salvos com sucesso no banco.")
         except Exception as e:
-            logger.error(f"Erro ao salvar dados brutos: {e}")
+            logger.error(f"Erro ao salvar dados brutos no banco: {e}")
             # Fallback para arquivo
             self._fallback_save(fonte, dados)
 
@@ -69,19 +70,16 @@ class ColetasRepository:
         
         try:
             with self._engine.connect() as conn:
-                brutos = conn.execute(sql_select).fetchall()
+                result = conn.execute(sql_select)
+                brutos = result.fetchall()
                 
                 if not brutos:
                     logger.info("Nenhum dado bruto do PGC para processar.")
                     return
                 
                 for coleta_id, dados_json in brutos:
-                    dados: List[Dict[str, Any]] = json.loads(dados_json)
-                    
-                    # 3. Normalizar (já feito no scraper, mas pode ser refinado aqui)
-                    # 4. Deduplicar (simplesmente inserindo no consolidado com UNIQUE constraint)
-                    # 5. Validar (assumindo que a validação semântica foi feita pelo checkpoint)
-                    # 6. Consolidar
+                    # Se dados_json for string, carrega. Se for dict (JSONB), usa direto.
+                    dados = dados_json if isinstance(dados_json, list) else json.loads(dados_json)
                     
                     for item in dados:
                         # Assumindo que 'dfd' é o identificador único (dfd_id)
@@ -106,7 +104,6 @@ class ColetasRepository:
                             })
                         except SQLAlchemyError as e:
                             logger.error(f"Erro ao consolidar DFD {item.get('dfd')}: {e}")
-                            # Continua para o próximo item (comportamento de "ignorar erro" do VBA - Item 10)
                             continue
                     
                     # Atualizar status da coleta bruta
@@ -121,9 +118,12 @@ class ColetasRepository:
 
     def _fallback_save(self, fonte: str, dados: Any):
         path = f"/tmp/{fonte}_fallback_{int(time.time())}.json"
-        with open(path, "w") as f:
-            json.dump(dados, f)
-        logger.warning(f"Dados salvos em fallback: {path}")
+        try:
+            with open(path, "w") as f:
+                json.dump(dados, f)
+            logger.warning(f"Dados salvos em fallback: {path}")
+        except Exception as e:
+            logger.error(f"Falha crítica: nem banco nem fallback funcionaram: {e}")
 
     def salvar_pncp(self, payload: Dict[str, Any]) -> Optional[int]:
         """Mantendo compatibilidade com código antigo."""

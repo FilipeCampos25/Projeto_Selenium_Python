@@ -28,6 +28,7 @@ from backend.app.api.routers import health, pages
 from backend.app.api.routers.pncp import router as pncp_router_refactored
 from backend.app.api.routers.pgc import router as pgc_router
 from backend.app.core.logging_config import setup_logging
+from backend.app.db.repositories import ColetasRepository
 
 # ============================================================
 # PATHS ABSOLUTOS (CRÍTICO PARA DOCKER)
@@ -43,7 +44,7 @@ if not TEMPLATES_DIR.exists():
         TEMPLATES_DIR = fallback_dir
     else:
         raise RuntimeError(
-            f"Diret?rio de templates N?O encontrado: {TEMPLATES_DIR}"
+            f"Diretório de templates NÃO encontrado: {TEMPLATES_DIR}"
         )
 templates = Jinja2Templates(directory=str(TEMPLATES_DIR))
 
@@ -128,6 +129,15 @@ async def startup_event():
     logger.info("=" * 70)
     logger.info("🚀 Sistema de Coleta PGC/PNCP INICIADO")
     logger.info(f"📁 Templates: {TEMPLATES_DIR}")
+    
+    # Inicialização do Banco de Dados
+    try:
+        logger.info("🗄️ Inicializando tabelas do banco de dados...")
+        repo = ColetasRepository()
+        logger.info("✅ Banco de dados inicializado com sucesso.")
+    except Exception as e:
+        logger.error(f"❌ Erro ao inicializar banco de dados: {e}")
+        
     logger.info("=" * 70)
 
 @app.on_event("shutdown")

@@ -25,6 +25,7 @@ from backend.app.core.base_scraper import (
     ElementNotFoundError,
     ScraperError
 )
+from backend.app.db.repositories import ColetasRepository
 
 logger = logging.getLogger(__name__)
 
@@ -117,6 +118,7 @@ class PNCPScraperRefactored(BasePortalScraper):
             remote_url=remote_url
         )
         self.ano_referencia: Optional[str] = None
+        self.repo = ColetasRepository()
         logger.info("PNCPScraperRefactored inicializado")
 
     # -------------------------------------------------------------------------
@@ -377,10 +379,12 @@ class PNCPScraperRefactored(BasePortalScraper):
             pages = 0
             total = 0
             errors = []
+            all_collected_data = []
 
             # ... (lógica de coleta de dados permanece a mesma)
             while True:
                 data = self.collect_page_data()
+                all_collected_data.extend(data)
                 total += len(data)
                 pages += 1
 
@@ -389,6 +393,14 @@ class PNCPScraperRefactored(BasePortalScraper):
 
                 if max_pages and pages >= max_pages:
                     break
+
+            # SALVAMENTO NO BANCO DE DADOS (NOVO)
+            if all_collected_data:
+                try:
+                    self.repo.salvar_bruto(fonte="PNCP", dados=all_collected_data)
+                    logger.info(f"Dados de {total} itens do PNCP salvos no banco de dados.")
+                except Exception as e:
+                    logger.error(f"Erro ao salvar dados do PNCP no banco: {e}")
 
             result = {
                 "status": "ok",

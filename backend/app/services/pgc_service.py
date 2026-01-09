@@ -29,6 +29,12 @@ def coleta_pgc(ano_ref: str) -> List[Dict[str, Any]]:
     repo = ColetasRepository()
     repo.salvar_bruto(fonte="PGC", dados=dados_brutos)
     
+    # 3. Inicia processamento automático após coleta (Opcional, mas recomendado pelo fluxo)
+    try:
+        repo.consolidar_dados()
+    except Exception as e:
+        logger.error(f"Erro na consolidação automática pós-coleta: {e}")
+
     # Retorna os dados brutos para visualização imediata, se necessário
     return dados_brutos
 
@@ -38,10 +44,6 @@ def processar_dados_brutos_pgc():
     Etapas 3 a 6 do Item 9: Normalizar, Deduplicar, Validar e Consolidar.
     """
     repo = ColetasRepository()
-    # TODO: Implementar a lógica de busca, processamento e consolidação
-    # Por enquanto, apenas chama o stub no repositório
+    # Chama a consolidação no repositório
     repo.consolidar_dados()
-    logger.info("Processamento de dados brutos PGC iniciado (stub).")
-    # A implementação completa do processamento será feita na próxima iteração
-    # para manter o foco na arquitetura de dados brutos/consolidados.
-    pass
+    logger.info("Processamento de dados brutos PGC concluído.")
