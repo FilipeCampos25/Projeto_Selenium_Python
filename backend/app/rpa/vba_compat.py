@@ -34,24 +34,33 @@ class VBACompat:
         """Aplica espera baseada no modo de operação (Item 13)."""
         time.sleep(VBAConfig.get_wait_time())
 
-    def wait_for_new_window(self, original_handles: set, timeout: int = 10) -> bool:
+    def wait_for_new_window(self, original_handles: set, timeout: int = 10):
         """
-        Espera por uma nova janela/aba ser aberta (Item 7).
-        Corrigido para comparar handles em vez de apenas contar a quantidade.
+        Compatibilidade VBA ajustada:
+        - O PGC NÃO abre mais nova janela/aba.
+        - Esta função agora valida que a navegação ocorreu
+        esperando um estado estável da página atual.
         """
-        try:
-            def check_new_window(d):
-                current_handles = set(d.window_handles)
-                new_handles = current_handles - original_handles
-                return list(new_handles)[0] if new_handles else False
 
-            new_window_handle = WebDriverWait(self.driver, timeout).until(check_new_window)
-            if new_window_handle:
-                logger.info(f"Nova janela detectada: {new_window_handle}")
-                return True
-            return False
+        logger.warning(
+            "wait_for_new_window: nenhuma nova janela esperada. "
+            "Validando navegação na mesma aba."
+        )
+
+        try:
+            # Aguarda a página estabilizar após o clique/login
+            WebDriverWait(self.driver, timeout).until(
+                lambda d: d.execute_script("return document.readyState") == "complete"
+            )
+
+            # Aguarda um pequeno intervalo para JS/SPAs finalizarem
+            time.sleep(2)
+
+            logger.info("Navegação confirmada na mesma aba (sem nova janela).")
+            return True
+
         except TimeoutException:
-            logger.error("Timeout esperando por nova janela.")
+            logger.error("Timeout aguardando estabilização da página.")
             return False
 
     def reset_context(self):

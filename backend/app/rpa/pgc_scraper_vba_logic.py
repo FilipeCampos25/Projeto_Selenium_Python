@@ -11,7 +11,6 @@ from typing import Dict, List, Optional, Any
 from selenium.webdriver.remote.webdriver import WebDriver
 from selenium.webdriver.common.by import By
 from .vba_compat import VBACompat, CheckpointFailureError
-from .driver_global import get_driver, set_driver, close_driver
 
 logger = logging.getLogger(__name__)
 
@@ -21,18 +20,11 @@ with open(XPATHS_FILE, 'r', encoding='utf-8') as f:
     XPATHS = json.load(f)
 
 class PGCScraperVBA:
-    def __init__(self, driver: Optional[WebDriver] = None, ano_ref: str = "2025"):
-        # Se o driver não for passado, ele tentará usar o global via VBACompat
-        self._driver = driver
+    def __init__(self, driver: WebDriver, ano_ref: str = "2025"):
+        self.driver = driver
         self.ano_ref = ano_ref
         self.compat = VBACompat(driver)
         self.data_collected = []
-
-    @property
-    def driver(self):
-        if self._driver:
-            return self._driver
-        return get_driver()
 
     def A_Loga_Acessa_PGC(self) -> bool:
         """Replica Sub A_Loga_Acessa_PGC() do VBA - Login manual via noVNC."""
@@ -193,11 +185,7 @@ def run_pgc_scraper_vba(ano_ref: str = "2025") -> List[Dict[str, Any]]:
     Login é feito manualmente via noVNC.
     """
     from .driver_factory import create_driver
-    
-    # Inicializa o driver e define como global
     driver = create_driver(headless=False)
-    set_driver(driver)
-    
     try:
         scraper = PGCScraperVBA(driver, ano_ref)
         if scraper.A_Loga_Acessa_PGC():
@@ -205,4 +193,4 @@ def run_pgc_scraper_vba(ano_ref: str = "2025") -> List[Dict[str, Any]]:
         else:
             return []
     finally:
-        close_driver()
+        driver.quit()
