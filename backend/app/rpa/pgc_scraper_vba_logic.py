@@ -1,6 +1,6 @@
 """
 pgc_scraper_vba_logic.py
-Scraper do PGC com lógica otimizada, removendo sleeps estáticos.
+Scraper do PGC com lógica otimizada e micro-esperas de estabilidade.
 """
 import json
 import time
@@ -28,9 +28,7 @@ class PGCScraperVBA:
         self.data_collected = []
 
     def A_Loga_Acessa_PGC(self) -> bool:
-        """Replica Sub A_Loga_Acessa_PGC() do VBA sem sleeps fixos."""
         logger.info("=== ABRINDO LOGIN NO PGC ===")
-        
         self.driver.get(XPATHS["login"]["url"])
         self.driver.maximize_window()
         
@@ -44,14 +42,14 @@ class PGCScraperVBA:
         
         logger.info("Aguardando login manual...")
         try:
-            # Espera dinâmica pelo título do PGC após login
             self.compat.wait_for_checkpoint(XPATHS["login"]["span_pgc_title"], "Planejamento e Gerenciamento de Contratações", timeout=300)
         except CheckpointFailureError:
             return False
         
+        # Micro-espera para garantir que o botão PGC está clicável após o título aparecer
+        time.sleep(0.5)
         self.compat.safe_click(XPATHS["login"]["div_pgc_access"])
         
-        # Validação de navegação
         if not self.compat.wait_for_new_window(set()):
             return False
             
@@ -59,21 +57,31 @@ class PGCScraperVBA:
         return True
 
     def A1_Demandas_DFD_PCA(self) -> List[Dict[str, Any]]:
-        """Replica Sub A1_Demandas_DFD_PCA() com esperas dinâmicas."""
         logger.info("=== INICIANDO COLETA DE DFDs ===")
         
+        # Garante estabilidade da página antes de validar contexto
+        time.sleep(1.0)
         try:
             self.compat.validate_table_context("Planejamento e Gerenciamento de Contratações", ["DFD", "Requisitante", "Valor"])
         except CheckpointFailureError:
             return []
 
+        # Clique no dropdown PCA com micro-espera prévia
+        time.sleep(0.5)
         self.compat.safe_click(XPATHS["pca_selection"]["dropdown_pca"])
-        li_pca_xpath = XPATHS["pca_selection"]["li_pca_ano_template"].replace("{ano}", self.ano_ref)
-        self.compat.safe_click(li_pca_xpath)
         
+        # Espera as opções do dropdown aparecerem
+        li_pca_xpath = XPATHS["pca_selection"]["li_pca_ano_template"].replace("{ano}", self.ano_ref)
+        try:
+            WebDriverWait(self.driver, 10).until(EC.visibility_of_element_located((By.XPATH, li_pca_xpath)))
+            self.compat.safe_click(li_pca_xpath)
+        except:
+            logger.error(f"Não foi possível selecionar o PCA {self.ano_ref}")
+            return []
+        
+        time.sleep(0.5)
         self.compat.safe_click(f"//*[@id='{XPATHS['pca_selection']['radio_minha_uasg_id']}']")
         
-        # Espera dinâmica pela tabela
         try:
             self.compat.wait_for_checkpoint(XPATHS["table"]["rows"], timeout=20)
         except CheckpointFailureError:
@@ -100,27 +108,25 @@ class PGCScraperVBA:
         return all_data
 
     def _count_total_pages(self) -> int:
-        """Conta páginas usando lógica de timeout em vez de sleeps."""
         contador = 1
         while True:
             try:
-                # Espera curta para ver se o botão existe e está habilitado
-                btn_next = WebDriverWait(self.driver, 2).until(
+                btn_next = WebDriverWait(self.driver, 3).until(
                     EC.presence_of_element_located((By.XPATH, XPATHS["pagination"]["btn_next"]))
                 )
                 if 'p-disabled' in btn_next.get_attribute('class'):
                     break
                 
                 self.compat.safe_click(XPATHS["pagination"]["btn_next"])
-                # Espera a tabela mudar (pode validar pelo número da página se disponível)
+                time.sleep(0.3) # Estabilidade pós-clique
                 self.compat.testa_spinner()
                 contador += 1
             except:
                 break
         
-        # Volta para página 1
         try:
             self.compat.safe_click(XPATHS["pagination"]["btn_first"])
+            time.sleep(0.5)
             self.compat.testa_spinner()
         except:
             pass
@@ -129,7 +135,6 @@ class PGCScraperVBA:
 
     def _read_current_table(self) -> List[Dict[str, Any]]:
         rows_data = []
-        # Garante que as linhas estão presentes
         try:
             WebDriverWait(self.driver, 10).until(
                 EC.presence_of_all_elements_located((By.XPATH, XPATHS["table"]["rows"]))
@@ -155,16 +160,13 @@ class PGCScraperVBA:
                     continue
         except:
             pass
-                
         return rows_data
 
     def _go_to_next_page(self) -> bool:
-        """Avança página com validação dinâmica."""
         try:
             if not self.compat.safe_click(XPATHS["pagination"]["btn_next"]):
                 return False
-            
-            # Espera dinâmica pela recarga
+            time.sleep(0.5)
             self.compat.wait_for_checkpoint(XPATHS["table"]["rows"], timeout=15)
             self.compat.testa_spinner()
             return True

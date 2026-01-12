@@ -1,6 +1,6 @@
 """
 Arquivo: base_scraper.py
-Descrição: Refatorado para remover sleeps estáticos e implementar esperas dinâmicas.
+Descrição: Refatorado para remover sleeps estáticos longos, mantendo micro-esperas de estabilidade.
 """
 
 # backend/app/core/base_scraper.py
@@ -16,6 +16,8 @@ from selenium.webdriver.support import expected_conditions as EC
 from selenium.common.exceptions import (
     TimeoutException,
     NoSuchElementException,
+    ElementClickInterceptedException,
+    StaleElementReferenceException
 )
 
 from backend.app.rpa.driver_factory import create_driver
@@ -52,7 +54,6 @@ class PaginationError(ScraperError):
 class BasePortalScraper(ABC):
     """
     Base class with common helpers for portal scrapers.
-    The driver creation is delegated to driver_factory.create_driver.
     """
 
     def __init__(
@@ -70,7 +71,6 @@ class BasePortalScraper(ABC):
         self.headless = headless
         self.remote_url = remote_url
 
-        # PATCH 1 — permitir driver externo
         self._driver: Optional[WebDriver] = driver
         if self._driver is None:
             self._init_driver()
@@ -85,9 +85,6 @@ class BasePortalScraper(ABC):
     def driver(self, value: WebDriver):
         self._driver = value
 
-    # --------------------------------------------------------
-    # Driver
-    # --------------------------------------------------------
     def _init_driver(self) -> None:
         if self._driver is None:
             self._driver = self._build_driver(self.headless, self.remote_url)
@@ -97,16 +94,12 @@ class BasePortalScraper(ABC):
         try:
             driver = create_driver(headless=headless, remote_url=remote_url)
             driver.set_page_load_timeout(60)
-            # Reduzido implicitly_wait para favorecer WebDriverWait explícito
             driver.implicitly_wait(0.5)
             return driver
         except Exception as e:
             logger.exception(f"Erro ao criar WebDriver: {e}")
             raise ScraperError(f"Falha ao inicializar navegador: {e}")
 
-    # --------------------------------------------------------
-    # Selectors
-    # --------------------------------------------------------
     @staticmethod
     def _by_from_selector(selector: Dict[str, Any]):
         by_type = selector.get("by", "xpath").lower()
@@ -125,24 +118,17 @@ class BasePortalScraper(ABC):
     def _extract_by_and_value(self, selector):
         if isinstance(selector, str):
             return By.XPATH, selector
-
         if "value" not in selector:
             raise ScraperError(f"Selector inválido: {selector}")
-
         by = self._by_from_selector(selector)
         return by, selector["value"]
 
-    # --------------------------------------------------------
-    # Wait helpers
-    # --------------------------------------------------------
     def wait_presence(self, selector_key: str, timeout: Optional[int] = None):
         timeout = timeout or self.wait_short
         selector = self.selectors.get(selector_key)
         if not selector:
             raise ScraperError(f"Selector '{selector_key}' não encontrado")
-
         by, value = self._extract_by_and_value(selector)
-
         try:
             return WebDriverWait(self.driver, timeout).until(
                 EC.presence_of_element_located((by, value))
@@ -155,9 +141,7 @@ class BasePortalScraper(ABC):
         selector = self.selectors.get(selector_key)
         if not selector:
             raise ScraperError(f"Selector '{selector_key}' não encontrado")
-
         by, value = self._extract_by_and_value(selector)
-
         try:
             return WebDriverWait(self.driver, timeout).until(
                 EC.element_to_be_clickable((by, value))
@@ -165,39 +149,34 @@ class BasePortalScraper(ABC):
         except TimeoutException:
             raise ElementNotFoundError(f"Timeout esperando elemento clicável '{selector_key}'")
 
-    # --------------------------------------------------------
-    # Element finders
-    # --------------------------------------------------------
     def find_element(self, selector_key: str):
         selector = self.selectors.get(selector_key)
         if not selector:
             raise ScraperError(f"Selector '{selector_key}' não encontrado")
-
         by, value = self._extract_by_and_value(selector)
-
         try:
             return self.driver.find_element(by, value)
         except NoSuchElementException:
             raise ElementNotFoundError(f"Elemento não encontrado '{selector_key}'")
 
-    # --------------------------------------------------------
-    # Click helpers
-    # --------------------------------------------------------
     def click(self, selector_key: str):
         """
-        Clica em um elemento após garantir que ele está clicável.
-        Removido time.sleep(0.3) estático.
+        Clica em um elemento com retry e micro-espera de estabilidade.
         """
         try:
             el = self.wait_clickable(selector_key, timeout=self.wait_long)
-            el.click()
-            # Otimização: Em vez de sleep fixo, o chamador deve usar wait_presence no próximo elemento esperado
+            # Micro-espera de estabilidade para evitar ElementClickInterceptedException em SPAs
+            time.sleep(0.2)
+            try:
+                el.click()
+            except (ElementClickInterceptedException, StaleElementReferenceException):
+                # Retry único após pequena espera
+                time.sleep(0.5)
+                el = self.wait_clickable(selector_key, timeout=5)
+                el.click()
         except Exception as e:
             raise ScraperError(f"Erro ao clicar em '{selector_key}': {e}")
 
-    # --------------------------------------------------------
-    # Navigation
-    # --------------------------------------------------------
     def get(self, url: str):
         try:
             self.driver.get(url)
@@ -214,18 +193,10 @@ class BasePortalScraper(ABC):
         except Exception as e:
             logger.warning(f"Erro ao fechar driver: {e}")
 
-    # --------------------------------------------------------
-    # Pagination
-    # --------------------------------------------------------
     def go_next_page(self, next_button_key: str = "pagination_next") -> bool:
-        """
-        Avança para a próxima página.
-        Removido time.sleep(1.2) estático.
-        """
         selector = self.selectors.get(next_button_key)
         if not selector:
             return False
-
         try:
             if isinstance(selector, str):
                 btn = self.driver.find_element(By.XPATH, selector)
@@ -237,15 +208,12 @@ class BasePortalScraper(ABC):
                 return False
 
             btn.click()
-            # Otimização: O chamador deve validar o carregamento da nova página/tabela
+            # Pequena espera para o início da transição
+            time.sleep(0.3)
             return True
-
         except Exception:
             return False
 
-    # --------------------------------------------------------
-    # Abstract
-    # --------------------------------------------------------
     @abstractmethod
     def run(self, *args, **kwargs):
         raise NotImplementedError

@@ -1,6 +1,6 @@
 """
 pncp_scraper.py
-Refatorado para remover sleeps estáticos e usar esperas dinâmicas.
+Refatorado para remover sleeps estáticos longos, mantendo micro-esperas de estabilidade.
 """
 import os
 import json
@@ -58,11 +58,11 @@ class PNCPScraperRefactored(BasePortalScraper):
         self.repo = ColetasRepository()
 
     def open_portal(self):
-        # Removido sleep(2) fixo
         logger.info("Portal PNCP aberto. Aguardando estabilização.")
         WebDriverWait(self.driver, 10).until(
             lambda d: d.execute_script("return document.readyState") == "complete"
         )
+        time.sleep(0.5) # Micro-espera de estabilidade inicial
 
     def wait_manual_login(self, timeout: int = 300) -> bool:
         logger.info("Aguardando login manual...")
@@ -73,14 +73,16 @@ class PNCPScraperRefactored(BasePortalScraper):
             try:
                 if login_marker:
                     if self.driver.find_elements(By.XPATH, login_marker):
+                        time.sleep(1.0) # Estabilidade pós-login
                         return True
 
                 current = self.driver.current_url
                 if current and "login" not in current.lower():
+                    time.sleep(1.0) # Estabilidade pós-login
                     return True
             except:
                 pass
-            time.sleep(0.5) # Polling rate aceitável para login manual
+            time.sleep(0.5)
         
         raise LoginFailedError("Timeout no login manual.")
 
@@ -101,6 +103,7 @@ class PNCPScraperRefactored(BasePortalScraper):
             by, val = resolve_selector(entry)
             try:
                 el = WebDriverWait(self.driver, 15).until(EC.element_to_be_clickable((by, val)))
+                time.sleep(0.2) # Estabilidade pré-clique
                 el.click()
                 return True
             except:
@@ -111,11 +114,14 @@ class PNCPScraperRefactored(BasePortalScraper):
             if not entry: return
             by, val = resolve_selector(entry)
             try:
+                # Pequena espera para o spinner aparecer
+                time.sleep(0.5)
                 WebDriverWait(self.driver, timeout).until(EC.invisibility_of_element_located((by, val)))
+                time.sleep(0.2) # Estabilidade pós-spinner
             except:
                 pass
 
-        # Fluxo sem sleeps fixos
+        # Fluxo com micro-esperas estratégicas
         dynamic_click("link_pgc")
         wait_spinner()
         dynamic_click("button_formacao_pca")
@@ -127,6 +133,7 @@ class PNCPScraperRefactored(BasePortalScraper):
             by, val = resolve_selector(opt_tmpl)
             try:
                 el = WebDriverWait(self.driver, 10).until(EC.element_to_be_clickable((by, val)))
+                time.sleep(0.3)
                 el.click()
             except:
                 logger.warning(f"Não encontrou opção PCA para ano {ano_ref}")

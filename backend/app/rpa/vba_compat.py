@@ -1,14 +1,18 @@
 """
 vba_compat.py
-Consolida o Modo Compatibilidade VBA com esperas dinâmicas.
-Removidos sleeps estáticos baseados em comentários do VBA original.
+Consolida o Modo Compatibilidade VBA com esperas dinâmicas e micro-estabilidade.
 """
 import time
 import logging
 from selenium.webdriver.common.by import By
 from selenium.webdriver.support.ui import WebDriverWait
 from selenium.webdriver.support import expected_conditions as EC
-from selenium.common.exceptions import TimeoutException, NoSuchWindowException
+from selenium.common.exceptions import (
+    TimeoutException, 
+    NoSuchWindowException, 
+    ElementClickInterceptedException,
+    StaleElementReferenceException
+)
 from .driver_global import get_driver
 from .config_vba import VBAConfig
 
@@ -30,25 +34,19 @@ class VBACompat:
         return get_driver()
 
     def slow_down(self):
-        """
-        Aplica espera dinâmica apenas se necessário.
-        Reduzido ou removido conforme orientação de evitar sleeps sem contexto.
-        """
+        """Aplica micro-espera de estabilidade."""
         wait_time = VBAConfig.get_wait_time()
-        if wait_time > 0.1:
-            time.sleep(wait_time)
+        if wait_time > 0:
+            time.sleep(min(wait_time, 0.5))
 
     def wait_for_new_window(self, original_handles: set, timeout: int = 10):
-        """
-        Valida que a navegação ocorreu esperando um estado estável.
-        Substituído sleep(2) por verificação de readyState.
-        """
         logger.info("Validando estabilização da página.")
         try:
             WebDriverWait(self.driver, timeout).until(
                 lambda d: d.execute_script("return document.readyState") == "complete"
             )
-            # Em vez de sleep(2), verificamos se o spinner (se existir) sumiu
+            # Micro-espera para garantir que o JS terminou de renderizar componentes
+            time.sleep(0.5)
             self.testa_spinner(timeout=5)
             return True
         except TimeoutException:
@@ -67,31 +65,24 @@ class VBACompat:
             logger.warning(f"Erro ao resetar contexto: {e}")
 
     def testa_spinner(self, timeout=60):
-        """
-        Emula o 'testa_spinner' do VBA com espera dinâmica.
-        """
         spinner_xpath = "//div[@id='spinner']"
-        # Curta espera para ver se o spinner aparece
         try:
-            WebDriverWait(self.driver, 1).until(EC.presence_of_element_located((By.XPATH, spinner_xpath)))
-        except:
-            return # Se não apareceu em 1s, assume que não virá ou já passou
-
-        # Se apareceu, espera sumir
-        try:
+            # Verifica se o spinner aparece em 1.5s (tempo para o JS disparar a requisição)
+            WebDriverWait(self.driver, 1.5).until(EC.presence_of_element_located((By.XPATH, spinner_xpath)))
+            # Se apareceu, espera sumir
             WebDriverWait(self.driver, timeout).until(EC.invisibility_of_element_located((By.XPATH, spinner_xpath)))
-        except TimeoutException:
-            logger.warning(f"Spinner ainda visível após {timeout}s")
+            # Micro-espera pós-spinner para estabilidade do DOM
+            time.sleep(0.2)
+        except:
+            pass
 
     def wait_for_checkpoint(self, xpath, text=None, timeout=30):
-        """Checkpoints Semânticos com espera dinâmica."""
         self.reset_context()
         try:
             element = WebDriverWait(self.driver, timeout).until(
                 EC.visibility_of_element_located((By.XPATH, xpath))
             )
             if text and text.lower() not in element.text.lower():
-                # Tenta esperar o texto mudar dinamicamente (timeout curto)
                 try:
                     WebDriverWait(self.driver, 5).until(
                         lambda d: text.lower() in d.find_element(By.XPATH, xpath).text.lower()
@@ -107,7 +98,7 @@ class VBACompat:
             raise CheckpointFailureError(f"Elemento não encontrado: {xpath}")
 
     def safe_click(self, xpath, scroll=True):
-        """Clique seguro sem sleeps desnecessários."""
+        """Clique seguro com tratamento de interceptação e micro-espera."""
         self.reset_context()
         try:
             element = WebDriverWait(self.driver, 20).until(
@@ -115,8 +106,15 @@ class VBACompat:
             )
             if scroll:
                 self.driver.execute_script("arguments[0].scrollIntoView({block: 'center'});", element)
+                time.sleep(0.3) # Estabilidade pós-scroll
             
-            element.click()
+            try:
+                element.click()
+            except (ElementClickInterceptedException, StaleElementReferenceException):
+                time.sleep(0.8) # Espera overlay sumir
+                element = WebDriverWait(self.driver, 10).until(EC.element_to_be_clickable((By.XPATH, xpath)))
+                element.click()
+                
             self.testa_spinner()
             return True
         except Exception as e:
@@ -131,7 +129,6 @@ class VBACompat:
             return False
         
         try:
-            # Espera dinâmica pelos cabeçalhos
             WebDriverWait(self.driver, 10).until(
                 lambda d: len(d.find_elements(By.XPATH, "//thead//th")) > 0
             )
