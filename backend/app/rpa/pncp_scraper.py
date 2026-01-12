@@ -388,6 +388,13 @@ class PNCPScraperRefactored(BasePortalScraper):
                 total += len(data)
                 pages += 1
 
+                # Log detalhado por página: quantidade e conteúdo dos itens coletados
+                try:
+                    logger.info(f"Página {pages}: coletados {len(data)} itens")
+                    logger.info(f"Página {pages} - itens: {json.dumps(data, ensure_ascii=False)}")
+                except Exception:
+                    logger.info(f"Página {pages}: erro ao serializar itens para log")
+
                 if not self.go_next_page(next_button_key="paginator_next"):
                     break
 

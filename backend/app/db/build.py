@@ -30,8 +30,17 @@ if not db_url:
 migrations_dir = Path(__file__).parent / "migrations"
 sql_files = sorted(migrations_dir.glob("*.sql"))
 
-for sql in sql_files:
+# Excluir arquivos de teste (ex.: 003_test_data.sql) para evitar aplicação automática
+apply_files = [f for f in sql_files if "test" not in f.name.lower()]
+skipped = [f for f in sql_files if f not in apply_files]
+
+for sql in apply_files:
     print(f"Applying {sql}")
     subprocess.check_call(["psql", db_url, "-f", str(sql)])
+
+if skipped:
+    print("Skipped test migrations:")
+    for s in skipped:
+        print(f" - {s}")
 
 print("Migrations applied.")

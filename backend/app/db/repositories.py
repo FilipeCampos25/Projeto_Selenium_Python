@@ -46,10 +46,14 @@ class ColetasRepository:
                     try:
                         with open(sql_file, 'r', encoding='utf-8') as f:
                             sql_content = f.read()
+
+                            # Detectar se o arquivo contém apenas comentários/linhas vazias
+                            stripped_lines = [l for l in sql_content.splitlines() if l.strip() and not l.strip().startswith("--")]
+                            if not stripped_lines:
+                                logger.info(f"Pulando migração vazia/ somente comentário: {sql_file.name}")
+                                continue
+
                             # Executa o conteúdo do arquivo SQL
-                            # Usamos text() para envolver o SQL e conn.execute
-                            # Nota: Alguns scripts complexos com múltiplos comandos podem precisar ser divididos
-                            # mas o SQLAlchemy lida bem com múltiplos comandos em uma string no Postgres.
                             conn.execute(text(sql_content))
                             conn.commit()
                             logger.info(f"Migração {sql_file.name} aplicada com sucesso.")
@@ -97,21 +101,29 @@ class ColetasRepository:
         """Salva os dados coletados na tabela coletas_brutas e também na tabela coletas (compatibilidade)."""
         if not dados:
             return
-
         # 1. Salva na tabela coletas_brutas (para o novo fluxo de consolidação)
-        sql_bruta = text("INSERT INTO coletas_brutas (fonte, dados, status) VALUES (:fonte, :dados, 'bruto')")
+        sql_bruta = text("INSERT INTO coletas_brutas (fonte, dados, status) VALUES (:fonte, :dados, 'bruto') RETURNING id")
         
         # 2. Salva na tabela coletas (para compatibilidade com o código antigo/views)
-        sql_coletas = text("INSERT INTO coletas (dados) VALUES (:dados)")
+        sql_coletas = text("INSERT INTO coletas (dados) VALUES (:dados) RETURNING id")
 
         try:
             with self._engine.connect() as conn:
-                # Salva bruto
-                conn.execute(sql_bruta, {"fonte": fonte, "dados": json.dumps(dados)})
-                
+                # Salva bruto e recupera id
+                result = conn.execute(sql_bruta, {"fonte": fonte, "dados": json.dumps(dados)})
+                try:
+                    inserted_id = result.scalar()
+                except Exception:
+                    # fallback if scalar() unsupported
+                    inserted_id = (result.fetchone() or [None])[0]
+
                 # Salva na tabela de compatibilidade
-                conn.execute(sql_coletas, {"dados": json.dumps(dados)})
-                
+                try:
+                    conn.execute(sql_coletas, {"dados": json.dumps(dados)})
+                except Exception:
+                    # não crítico — apenas compatibilidade
+                    logger.debug("Falha ao inserir em tabela coletas (compatibilidade)")
+
                 # Se for PGC, também tentamos inserir/atualizar na PGC_2025 para as views funcionarem
                 if fonte == "PGC":
                     for item in dados:
@@ -120,8 +132,6 @@ class ColetasRepository:
                             VALUES (:dfd, :requisitante, :descricao, :valor, :situacao, NOW())
                             ON CONFLICT DO NOTHING
                         """)
-                        # Nota: PGC_2025 não tem PK clara no SQL original (usa SERIAL pag), 
-                        # então o ON CONFLICT aqui é ilustrativo ou precisaria de uma UK em dfd.
                         try:
                             conn.execute(sql_pgc, {
                                 "dfd": item.get("dfd"),
@@ -130,14 +140,67 @@ class ColetasRepository:
                                 "valor": item.get("valor"),
                                 "situacao": item.get("situacao")
                             })
-                        except:
-                            pass
+                        except Exception:
+                            # não interromper a gravação principal por causa disso
+                            logger.debug("Erro ao inserir item em PGC_2025, prosseguindo")
 
                 conn.commit()
-                logger.info(f"Dados de {fonte} salvos com sucesso no banco.")
+
+                # Verificação pós-inserção: buscar a linha inserida e comparar tamanho
+                try:
+                    check_sql = text("SELECT dados FROM coletas_brutas WHERE id = :id")
+                    row = conn.execute(check_sql, {"id": inserted_id}).fetchone()
+                    saved_len = 0
+                    if row and row[0]:
+                        # row[0] pode ser a lista já desserializada ou texto; normalizamos
+                        saved = row[0]
+                        if isinstance(saved, (list, tuple)):
+                            saved_len = len(saved)
+                        else:
+                            try:
+                                saved_len = len(saved)
+                            except Exception:
+                                try:
+                                    saved_len = len(json.loads(saved))
+                                except Exception:
+                                    saved_len = -1
+
+                    logger.info(f"Dados de {fonte} salvos com sucesso no banco. id={inserted_id} itens_enviados={len(dados)} itens_salvos={saved_len}")
+                    if saved_len != len(dados):
+                        logger.warning(f"Discrepância detectada: enviados={len(dados)} x salvos={saved_len} (fonte={fonte}, id={inserted_id})")
+                except Exception as e:
+                    logger.warning(f"Não foi possível verificar integridade pós-inserção: {e}")
+
         except Exception as e:
             logger.error(f"Erro ao salvar dados no banco: {e}")
             self._fallback_save(fonte, dados)
+
+    def verify_last_collection(self, fonte: str) -> Dict[str, Any]:
+        """Retorna um resumo da última coleta gravada para a fonte informada."""
+        try:
+            with self._engine.connect() as conn:
+                sql = text("SELECT id, dados, criado_em FROM coletas_brutas WHERE fonte = :fonte ORDER BY criado_em DESC LIMIT 1")
+                row = conn.execute(sql, {"fonte": fonte}).fetchone()
+                if not row:
+                    return {"found": False, "msg": "Nenhuma coleta encontrada para essa fonte."}
+
+                id_, dados, criado_em = row
+                # dados pode vir como lista ou JSON string
+                if isinstance(dados, (list, tuple)):
+                    count = len(dados)
+                else:
+                    try:
+                        count = len(dados)
+                    except Exception:
+                        try:
+                            count = len(json.loads(dados))
+                        except Exception:
+                            count = -1
+
+                return {"found": True, "id": id_, "items_count": count, "criado_em": criado_em}
+        except Exception as e:
+            logger.error(f"Erro ao verificar última coleta: {e}")
+            return {"found": False, "msg": str(e)}
 
     def consolidar_dados(self):
         """Processa dados da coletas_brutas para dfds_consolidados."""

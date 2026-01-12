@@ -113,6 +113,13 @@ class PGCScraperVBA:
             logger.info(f"Coletando página {pos} de {posM}...")
             page_data = self._read_current_table()
             all_data.extend(page_data)
+
+            # Log detalhado por página: quantidade e conteúdo dos itens coletados
+            try:
+                logger.info(f"Página {pos}: coletados {len(page_data)} itens")
+                logger.info(f"Página {pos} - itens: {json.dumps(page_data, ensure_ascii=False)}")
+            except Exception:
+                logger.info(f"Página {pos}: erro ao serializar itens para log")
             
             if pos < posM:
                 if not self._go_to_next_page():
