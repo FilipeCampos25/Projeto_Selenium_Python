@@ -2,26 +2,15 @@
 FastAPI main app — VERSÃO FINAL CORRIGIDA
 """
 
-# ============================================================
-# DEBUGPY — PRIMEIRA COISA A EXECUTAR
-# ============================================================
-
 import os
 from pathlib import Path
-
-
-# ============================================================
-# IMPORTS DA APLICAÇÃO
-# ============================================================
-
+import logging
+import time
+import uvicorn
 from fastapi import FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse, RedirectResponse
 from fastapi.templating import Jinja2Templates
-
-import logging
-import time
-import uvicorn
 
 from backend.app.config import settings
 from backend.app.api.routers import health, pages
@@ -31,21 +20,20 @@ from backend.app.core.logging_config import setup_logging
 from backend.app.db.repositories import ColetasRepository
 
 # ============================================================
-# PATHS ABSOLUTOS (CRÍTICO PARA DOCKER)
+# PATHS ABSOLUTOS
 # ============================================================
 
 BASE_DIR = Path(__file__).resolve().parent
 TEMPLATES_DIR = BASE_DIR / "templates"
 
 if not TEMPLATES_DIR.exists():
-    # Fallback para o layout atual do projeto (templates em /frontend)
     fallback_dir = BASE_DIR.parent.parent / "frontend" / "templates"
     if fallback_dir.exists():
         TEMPLATES_DIR = fallback_dir
     else:
-        raise RuntimeError(
-            f"Diretório de templates NÃO encontrado: {TEMPLATES_DIR}"
-        )
+        # Cria diretório se não existir para evitar erro fatal
+        os.makedirs(TEMPLATES_DIR, exist_ok=True)
+
 templates = Jinja2Templates(directory=str(TEMPLATES_DIR))
 
 # ============================================================
@@ -82,18 +70,13 @@ app.add_middleware(
 async def log_requests(request: Request, call_next):
     start = time.time()
     logger.info(f"→ {request.method} {request.url.path}")
-
     response = await call_next(request)
-
     duration = (time.time() - start) * 1000
-    logger.info(
-        f"← {request.method} {request.url.path} "
-        f"[{response.status_code}] {duration:.2f}ms"
-    )
+    logger.info(f"← {request.method} {request.url.path} [{response.status_code}] {duration:.2f}ms")
     return response
 
 # ============================================================
-# EXCEPTION HANDLER GLOBAL
+# EXCEPTION HANDLER
 # ============================================================
 
 @app.exception_handler(Exception)
@@ -112,9 +95,7 @@ async def global_exception_handler(request: Request, exc: Exception):
 # ROUTERS
 # ============================================================
 
-# 🔥 INJEÇÃO EXPLÍCITA DOS TEMPLATES NO ROUTER DE PÁGINAS
 pages.templates = templates
-
 app.include_router(health.router, prefix="/api", tags=["health"])
 app.include_router(pages.router, tags=["pages"])
 app.include_router(pncp_router_refactored)
@@ -128,15 +109,15 @@ app.include_router(pgc_router)
 async def startup_event():
     logger.info("=" * 70)
     logger.info("🚀 Sistema de Coleta PGC/PNCP INICIADO")
-    logger.info(f"📁 Templates: {TEMPLATES_DIR}")
     
-    # Inicialização do Banco de Dados
+    # Inicialização do Banco de Dados (Tabelas, Triggers, Views)
     try:
-        logger.info("🗄️ Inicializando tabelas do banco de dados...")
+        logger.info("🗄️ Verificando e inicializando objetos do banco de dados...")
+        # Ao instanciar o repositório, o __init__ chama _ensure_db_objects
         repo = ColetasRepository()
         logger.info("✅ Banco de dados inicializado com sucesso.")
     except Exception as e:
-        logger.error(f"❌ Erro ao inicializar banco de dados: {e}")
+        logger.error(f"❌ Erro crítico ao inicializar banco de dados: {e}")
         
     logger.info("=" * 70)
 
@@ -145,16 +126,12 @@ async def shutdown_event():
     logger.info("🛑 Sistema desligando")
 
 # ============================================================
-# ROOT GLOBAL
+# ROOT
 # ============================================================
 
 @app.get("/", include_in_schema=False)
 async def root():
     return RedirectResponse(url="/pgc")
-
-# ============================================================
-# MAIN
-# ============================================================
 
 if __name__ == "__main__":
     uvicorn.run(

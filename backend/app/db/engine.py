@@ -1,69 +1,63 @@
 """
-Arquivo: engine.py
-Descrição: Este arquivo faz parte do projeto e foi comentado para explicar a função de cada bloco de código.
+engine.py
+Configuração do engine SQLAlchemy com suporte a inicialização robusta.
 """
 
-# backend/app/db/engine.py
-# Robust engine factory: aceita DATABASE_URL via env; se não existir, usa fallback
-# e não levanta exceção durante import (evita break no startup do uvicorn).
-
 import os
+import logging
 from sqlalchemy import create_engine
 from sqlalchemy.engine import Engine
 from sqlalchemy.orm import sessionmaker
-import logging
 
 logger = logging.getLogger(__name__)
 
-# Tentativas em ordem: env padrão, env alternativa, fallback igual ao session.py
-DATABASE_URL = (
-    os.getenv("DATABASE_URL")
-    or os.getenv("DATABASE_URI")
-    or os.getenv("DB_URL")
-    or os.getenv("DATABASE_URL_FALLBACK")
-)
-
-if not DATABASE_URL:
-    # Fallback (desenvolvimento/compose): mantido igual ao session.py para compatibilidade.
-    # Ajuste este valor se seu docker-compose usar outro usuário/senha/db.
-    DATABASE_URL = "postgresql+psycopg2://user:password@db:5432/projeto"
-    logger.warning(
-        "DATABASE_URL não definida — usando fallback de desenvolvimento. "
-        "Defina a variável DATABASE_URL em produção."
+def get_database_url():
+    """Resolve a URL do banco de dados priorizando variáveis de ambiente."""
+    url = (
+        os.getenv("DATABASE_URL")
+        or os.getenv("DATABASE_URI")
+        or os.getenv("DB_URL")
     )
+    
+    if not url:
+        # Fallback para Docker Compose padrão
+        user = os.getenv("POSTGRES_USER", "postgres")
+        password = os.getenv("POSTGRES_PASSWORD", "postgres")
+        host = os.getenv("POSTGRES_HOST", "db")
+        port = os.getenv("POSTGRES_PORT", "5432")
+        db = os.getenv("POSTGRES_DB", "projeto")
+        url = f"postgresql+psycopg2://{user}:{password}@{host}:{port}/{db}"
+        logger.warning(f"DATABASE_URL não definida. Usando fallback: {url}")
+    
+    # Garante que use o driver psycopg2 se for postgres
+    if url.startswith("postgres://"):
+        url = url.replace("postgres://", "postgresql+psycopg2://", 1)
+    elif url.startswith("postgresql://"):
+        url = url.replace("postgresql://", "postgresql+psycopg2://", 1)
+        
+    return url
 
-# Cria engine global (pool de conexões do SQLAlchemy)
-# Configurações conservadoras para evitar exaustão de conexões
-_engine: Engine = create_engine(
+DATABASE_URL = get_database_url()
+
+# Cria engine global
+engine: Engine = create_engine(
     DATABASE_URL,
     pool_pre_ping=True,
-    pool_size=int(os.getenv("DB_POOL_SIZE", "5")),
-    max_overflow=int(os.getenv("DB_MAX_OVERFLOW", "10")),
+    pool_size=int(os.getenv("DB_POOL_SIZE", "10")),
+    max_overflow=int(os.getenv("DB_MAX_OVERFLOW", "20")),
     future=True,
 )
 
-engine = _engine
-
-# Session maker opcional
-SessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=_engine, future=True)
+SessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine, future=True)
 
 def get_engine() -> Engine:
-    """
-    Função get_engine:
-    Executa a lógica principal definida nesta função.
-    """
-    """Retorna o engine compartilhado do projeto."""
-    return _engine
+    """Retorna o engine compartilhado."""
+    return engine
 
 def get_db_session():
-    """
-    Função get_db_session:
-    Executa a lógica principal definida nesta função.
-    """
-    """Yield a session (use em dependências FastAPI se precisar)."""
+    """Dependency para FastAPI."""
     db = SessionLocal()
     try:
         yield db
     finally:
         db.close()
-        
