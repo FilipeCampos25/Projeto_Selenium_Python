@@ -62,7 +62,7 @@ class PNCPScraperRefactored(BasePortalScraper):
         WebDriverWait(self.driver, 10).until(
             lambda d: d.execute_script("return document.readyState") == "complete"
         )
-        time.sleep(0.5) # Micro-espera de estabilidade inicial
+        # Removido sleep(0.5) redundante após document.readyState == complete
 
     def wait_manual_login(self, timeout: int = 300) -> bool:
         logger.info("Aguardando login manual...")
@@ -73,12 +73,12 @@ class PNCPScraperRefactored(BasePortalScraper):
             try:
                 if login_marker:
                     if self.driver.find_elements(By.XPATH, login_marker):
-                        time.sleep(1.0) # Estabilidade pós-login
+                        # Removido sleep(1.0) redundante pós-login
                         return True
 
                 current = self.driver.current_url
                 if current and "login" not in current.lower():
-                    time.sleep(1.0) # Estabilidade pós-login
+                    # Removido sleep(1.0) redundante pós-login
                     return True
             except:
                 pass
@@ -103,7 +103,7 @@ class PNCPScraperRefactored(BasePortalScraper):
             by, val = resolve_selector(entry)
             try:
                 el = WebDriverWait(self.driver, 15).until(EC.element_to_be_clickable((by, val)))
-                time.sleep(0.2) # Estabilidade pré-clique
+                # Removido sleep(0.2) redundante pré-clique
                 el.click()
                 return True
             except:
@@ -114,10 +114,10 @@ class PNCPScraperRefactored(BasePortalScraper):
             if not entry: return
             by, val = resolve_selector(entry)
             try:
-                # Pequena espera para o spinner aparecer
-                time.sleep(0.5)
+                # Pequena espera para o spinner aparecer (necessário para o JS disparar)
+                time.sleep(0.2) 
                 WebDriverWait(self.driver, timeout).until(EC.invisibility_of_element_located((by, val)))
-                time.sleep(0.2) # Estabilidade pós-spinner
+                # Removido sleep(0.2) redundante pós-spinner
             except:
                 pass
 
@@ -133,7 +133,7 @@ class PNCPScraperRefactored(BasePortalScraper):
             by, val = resolve_selector(opt_tmpl)
             try:
                 el = WebDriverWait(self.driver, 10).until(EC.element_to_be_clickable((by, val)))
-                time.sleep(0.3)
+                # Removido sleep(0.3) redundante
                 el.click()
             except:
                 logger.warning(f"Não encontrou opção PCA para ano {ano_ref}")

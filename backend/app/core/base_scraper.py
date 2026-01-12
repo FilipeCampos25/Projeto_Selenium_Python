@@ -28,7 +28,7 @@ logger = logging.getLogger(__name__)
 
 # ============================================================
 # EXCEÇÕES
-# ============================================================
+31	# ============================================================
 class ScraperError(Exception):
     pass
 
@@ -161,16 +161,15 @@ class BasePortalScraper(ABC):
 
     def click(self, selector_key: str):
         """
-        Clica em um elemento com retry e micro-espera de estabilidade.
+        Clica em um elemento com retry e tratamento de interceptação.
         """
         try:
             el = self.wait_clickable(selector_key, timeout=self.wait_long)
-            # Micro-espera de estabilidade para evitar ElementClickInterceptedException em SPAs
-            time.sleep(0.2)
+            # Removido sleep(0.2) redundante, wait_clickable já garante que o elemento está pronto
             try:
                 el.click()
             except (ElementClickInterceptedException, StaleElementReferenceException):
-                # Retry único após pequena espera
+                # Retry único após pequena espera para overlay sumir
                 time.sleep(0.5)
                 el = self.wait_clickable(selector_key, timeout=5)
                 el.click()
@@ -208,8 +207,7 @@ class BasePortalScraper(ABC):
                 return False
 
             btn.click()
-            # Pequena espera para o início da transição
-            time.sleep(0.3)
+            # Removido sleep(0.3) redundante, o chamador deve lidar com a espera da nova página
             return True
         except Exception:
             return False

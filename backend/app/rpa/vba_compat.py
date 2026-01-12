@@ -34,10 +34,11 @@ class VBACompat:
         return get_driver()
 
     def slow_down(self):
-        """Aplica micro-espera de estabilidade."""
+        """Aplica micro-espera de estabilidade apenas se necessário."""
         wait_time = VBAConfig.get_wait_time()
         if wait_time > 0:
-            time.sleep(min(wait_time, 0.5))
+            # Reduzido para o mínimo necessário para estabilidade de rede/JS
+            time.sleep(min(wait_time, 0.1))
 
     def wait_for_new_window(self, original_handles: set, timeout: int = 10):
         logger.info("Validando estabilização da página.")
@@ -45,8 +46,7 @@ class VBACompat:
             WebDriverWait(self.driver, timeout).until(
                 lambda d: d.execute_script("return document.readyState") == "complete"
             )
-            # Micro-espera para garantir que o JS terminou de renderizar componentes
-            time.sleep(0.5)
+            # Removido sleep(0.5) redundante, testa_spinner já lida com a espera necessária
             self.testa_spinner(timeout=5)
             return True
         except TimeoutException:
@@ -71,8 +71,7 @@ class VBACompat:
             WebDriverWait(self.driver, 1.5).until(EC.presence_of_element_located((By.XPATH, spinner_xpath)))
             # Se apareceu, espera sumir
             WebDriverWait(self.driver, timeout).until(EC.invisibility_of_element_located((By.XPATH, spinner_xpath)))
-            # Micro-espera pós-spinner para estabilidade do DOM
-            time.sleep(0.2)
+            # Removido sleep(0.2) redundante pós-spinner
         except:
             pass
 
@@ -98,7 +97,7 @@ class VBACompat:
             raise CheckpointFailureError(f"Elemento não encontrado: {xpath}")
 
     def safe_click(self, xpath, scroll=True):
-        """Clique seguro com tratamento de interceptação e micro-espera."""
+        """Clique seguro com tratamento de interceptação."""
         self.reset_context()
         try:
             element = WebDriverWait(self.driver, 20).until(
@@ -106,12 +105,13 @@ class VBACompat:
             )
             if scroll:
                 self.driver.execute_script("arguments[0].scrollIntoView({block: 'center'});", element)
-                time.sleep(0.3) # Estabilidade pós-scroll
+                # Removido sleep(0.3) pós-scroll, WebDriverWait já garante que o elemento está clicável
             
             try:
                 element.click()
             except (ElementClickInterceptedException, StaleElementReferenceException):
-                time.sleep(0.8) # Espera overlay sumir
+                # Mantido sleep(0.8) apenas em caso de erro real de interceptação (overlay)
+                time.sleep(0.8)
                 element = WebDriverWait(self.driver, 10).until(EC.element_to_be_clickable((By.XPATH, xpath)))
                 element.click()
                 

@@ -46,8 +46,7 @@ class PGCScraperVBA:
         except CheckpointFailureError:
             return False
         
-        # Micro-espera para garantir que o botão PGC está clicável após o título aparecer
-        time.sleep(0.5)
+        # Removido sleep(0.5) redundante, safe_click já lida com a espera
         self.compat.safe_click(XPATHS["login"]["div_pgc_access"])
         
         if not self.compat.wait_for_new_window(set()):
@@ -59,15 +58,13 @@ class PGCScraperVBA:
     def A1_Demandas_DFD_PCA(self) -> List[Dict[str, Any]]:
         logger.info("=== INICIANDO COLETA DE DFDs ===")
         
-        # Garante estabilidade da página antes de validar contexto
-        time.sleep(1.0)
+        # Removido sleep(1.0) redundante, validate_table_context já faz o checkpoint
         try:
             self.compat.validate_table_context("Planejamento e Gerenciamento de Contratações", ["DFD", "Requisitante", "Valor"])
         except CheckpointFailureError:
             return []
 
-        # Clique no dropdown PCA com micro-espera prévia
-        time.sleep(0.5)
+        # Removido sleep(0.5) redundante antes do safe_click
         self.compat.safe_click(XPATHS["pca_selection"]["dropdown_pca"])
         
         # Espera as opções do dropdown aparecerem
@@ -79,7 +76,7 @@ class PGCScraperVBA:
             logger.error(f"Não foi possível selecionar o PCA {self.ano_ref}")
             return []
         
-        time.sleep(0.5)
+        # Removido sleep(0.5) redundante
         self.compat.safe_click(f"//*[@id='{XPATHS['pca_selection']['radio_minha_uasg_id']}']")
         
         try:
@@ -118,7 +115,7 @@ class PGCScraperVBA:
                     break
                 
                 self.compat.safe_click(XPATHS["pagination"]["btn_next"])
-                time.sleep(0.3) # Estabilidade pós-clique
+                # Removido sleep(0.3) redundante pós-clique, testa_spinner já aguarda
                 self.compat.testa_spinner()
                 contador += 1
             except:
@@ -126,7 +123,7 @@ class PGCScraperVBA:
         
         try:
             self.compat.safe_click(XPATHS["pagination"]["btn_first"])
-            time.sleep(0.5)
+            # Removido sleep(0.5) redundante
             self.compat.testa_spinner()
         except:
             pass
@@ -166,7 +163,7 @@ class PGCScraperVBA:
         try:
             if not self.compat.safe_click(XPATHS["pagination"]["btn_next"]):
                 return False
-            time.sleep(0.5)
+            # Removido sleep(0.5) redundante, wait_for_checkpoint e testa_spinner já garantem a prontidão
             self.compat.wait_for_checkpoint(XPATHS["table"]["rows"], timeout=15)
             self.compat.testa_spinner()
             return True
