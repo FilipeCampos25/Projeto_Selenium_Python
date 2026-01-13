@@ -1,29 +1,26 @@
 """
 vba_compat.py
-Consolida o Modo Compatibilidade VBA com esperas dinâmicas e micro-estabilidade.
+Consolida o Modo Compatibilidade VBA (Itens 2, 3, 7 e 13).
+Integrado com config_vba para permitir otimização futura.
 """
 import time
 import logging
 from selenium.webdriver.common.by import By
 from selenium.webdriver.support.ui import WebDriverWait
 from selenium.webdriver.support import expected_conditions as EC
-from selenium.common.exceptions import (
-    TimeoutException, 
-    NoSuchWindowException, 
-    ElementClickInterceptedException,
-    StaleElementReferenceException
-)
+from selenium.common.exceptions import TimeoutException, NoSuchWindowException
 from .driver_global import get_driver
-from .config_vba import VBAConfig
 
 class CheckpointFailureError(Exception):
     """Exceção levantada quando um Checkpoint Semântico falha."""
     pass
+from .config_vba import VBAConfig
 
 logger = logging.getLogger(__name__)
 
 class VBACompat:
     def __init__(self, driver=None):
+        # Se o driver não for passado, usa o global
         self._driver = driver
         self.last_handle = None
 
@@ -34,26 +31,40 @@ class VBACompat:
         return get_driver()
 
     def slow_down(self):
-        """Aplica micro-espera de estabilidade apenas se necessário."""
-        wait_time = VBAConfig.get_wait_time()
-        if wait_time > 0:
-            # Reduzido para o mínimo necessário para estabilidade de rede/JS
-            time.sleep(min(wait_time, 0.1))
+        """Aplica espera baseada no modo de operação (Item 13)."""
+        time.sleep(VBAConfig.get_wait_time())
 
     def wait_for_new_window(self, original_handles: set, timeout: int = 10):
-        logger.info("Validando estabilização da página.")
+        """
+        Compatibilidade VBA ajustada:
+        - O PGC NÃO abre mais nova janela/aba.
+        - Esta função agora valida que a navegação ocorreu
+        esperando um estado estável da página atual.
+        """
+
+        logger.warning(
+            "wait_for_new_window: nenhuma nova janela esperada. "
+            "Validando navegação na mesma aba."
+        )
+
         try:
+            # Aguarda a página estabilizar após o clique/login
             WebDriverWait(self.driver, timeout).until(
                 lambda d: d.execute_script("return document.readyState") == "complete"
             )
-            # Removido sleep(0.5) redundante, testa_spinner já lida com a espera necessária
-            self.testa_spinner(timeout=5)
+
+            # Aguarda um pequeno intervalo para JS/SPAs finalizarem
+            time.sleep(2)
+
+            logger.info("Navegação confirmada na mesma aba (sem nova janela).")
             return True
+
         except TimeoutException:
             logger.error("Timeout aguardando estabilização da página.")
             return False
 
     def reset_context(self):
+        """Garante contexto correto (Item 7)."""
         try:
             self.driver.switch_to.default_content()
             if not self.last_handle:
@@ -65,39 +76,38 @@ class VBACompat:
             logger.warning(f"Erro ao resetar contexto: {e}")
 
     def testa_spinner(self, timeout=60):
+        """Emula o 'testa_spinner' do VBA."""
         spinner_xpath = "//div[@id='spinner']"
         try:
-            # Verifica se o spinner aparece em 1.5s (tempo para o JS disparar a requisição)
-            WebDriverWait(self.driver, 1.5).until(EC.presence_of_element_located((By.XPATH, spinner_xpath)))
-            # Se apareceu, espera sumir
-            WebDriverWait(self.driver, timeout).until(EC.invisibility_of_element_located((By.XPATH, spinner_xpath)))
-            # Removido sleep(0.2) redundante pós-spinner
+            WebDriverWait(self.driver, 2).until(EC.presence_of_element_located((By.XPATH, spinner_xpath)))
         except:
             pass
 
+        try:
+            WebDriverWait(self.driver, timeout).until(EC.invisibility_of_element_located((By.XPATH, spinner_xpath)))
+        except TimeoutException:
+            pass
+        
+        self.slow_down()
+
     def wait_for_checkpoint(self, xpath, text=None, timeout=30):
+        """Checkpoints Semânticos (Item 4 e 11)."""
         self.reset_context()
         try:
             element = WebDriverWait(self.driver, timeout).until(
                 EC.visibility_of_element_located((By.XPATH, xpath))
             )
             if text and text.lower() not in element.text.lower():
-                try:
-                    WebDriverWait(self.driver, 5).until(
-                        lambda d: text.lower() in d.find_element(By.XPATH, xpath).text.lower()
-                    )
-                except TimeoutException:
-                    logger.error(f"Checkpoint falhou: Texto esperado '{text}' não encontrado.")
-                    raise CheckpointFailureError(f"Texto não corresponde: Esperado='{text}'")
-            
+                logger.error(f"Checkpoint falhou: Texto esperado '{text}' não encontrado no elemento {xpath}.")
+                raise CheckpointFailureError(f"Texto do checkpoint não corresponde: Esperado='{text}', Encontrado='{element.text}'")
             logger.info(f"Checkpoint bem-sucedido: {xpath}")
             return True
         except TimeoutException:
-            logger.error(f"Checkpoint falhou: Elemento {xpath} não encontrado.")
-            raise CheckpointFailureError(f"Elemento não encontrado: {xpath}")
+            logger.error(f"Checkpoint falhou: Elemento {xpath} não encontrado no tempo limite.")
+            raise CheckpointFailureError(f"Elemento de checkpoint não encontrado: {xpath}")
 
     def safe_click(self, xpath, scroll=True):
-        """Clique seguro com tratamento de interceptação."""
+        """Clique seguro seguindo as regras do VBA (Item 6)."""
         self.reset_context()
         try:
             element = WebDriverWait(self.driver, 20).until(
@@ -105,16 +115,9 @@ class VBACompat:
             )
             if scroll:
                 self.driver.execute_script("arguments[0].scrollIntoView({block: 'center'});", element)
-                # Removido sleep(0.3) pós-scroll, WebDriverWait já garante que o elemento está clicável
+                time.sleep(0.5)
             
-            try:
-                element.click()
-            except (ElementClickInterceptedException, StaleElementReferenceException):
-                # Mantido sleep(0.8) apenas em caso de erro real de interceptação (overlay)
-                time.sleep(0.8)
-                element = WebDriverWait(self.driver, 10).until(EC.element_to_be_clickable((By.XPATH, xpath)))
-                element.click()
-                
+            element.click()
             self.testa_spinner()
             return True
         except Exception as e:
@@ -122,18 +125,18 @@ class VBACompat:
             return False
 
     def validate_table_context(self, expected_title, expected_headers):
+        """Validação específica para o Item 8."""
         title_xpath = "//span[text()='Planejamento e Gerenciamento de Contratações']"
         try:
             self.wait_for_checkpoint(title_xpath, expected_title)
-        except CheckpointFailureError:
+        except CheckpointFailureError as e:
+            logger.error(f"Falha na validação do título da página: {e}")
             return False
         
         try:
-            WebDriverWait(self.driver, 10).until(
-                lambda d: len(d.find_elements(By.XPATH, "//thead//th")) > 0
-            )
             table_headers = self.driver.find_elements(By.XPATH, "//thead//th")
             headers_text = [th.text.strip() for th in table_headers if th.text.strip()]
             return all(h in headers_text for h in expected_headers)
-        except Exception:
+        except Exception as e:
+            logger.error(f"Erro ao validar cabeçalhos da tabela: {e}")
             return False
