@@ -132,38 +132,45 @@ class PGCScraperVBA:
 
     def _count_total_pages(self) -> int:
         """
-        Replica Do While ExisteBotaoProximaPagina() do VBA.
-        Clica sucessivamente no botão 'próxima' até que ele desapareça,
-        contando o número de páginas.
+        Adaptação fiel do VBA:
+        - Vai direto para a última página (>>)
+        - Descobre o número real da última página pelos botões numéricos
+        - Volta para a primeira página (<<)
         """
-        contador = 1
-        original_rows_count = len(self.driver.find_elements(By.XPATH, XPATHS["table"]["rows"]))
-        
-        while True:
-            try:
-                # Verifica se o botão próxima existe
-                btn_next = self.driver.find_element(By.XPATH, XPATHS["pagination"]["btn_next"])
-                # Verifica se está habilitado (classe 'p-disabled' significa que está desabilitado)
-                if 'p-disabled' in btn_next.get_attribute('class'):
-                    logger.info(f"Botão próxima desabilitado. Total de páginas: {contador}")
-                    break
-                
-                # Clica próxima
-                self.compat.safe_click(XPATHS["pagination"]["btn_next"])
-                contador += 1
-                
-            except Exception as e:
-                logger.info(f"Erro ao procurar/clicar botão próxima (fim da paginação). Total de páginas: {contador}")
-                break
-        
-        # Volta para página 1
+
+        total_paginas = 1
+
         try:
-            self.compat.safe_click(XPATHS["pagination"]["btn_first"])
+            # 1. Ir direto para a última página (>>)
+            self.compat.safe_click(XPATHS["pagination"]["btn_last"])
             self.compat.testa_spinner()
+
+            # 2. Ler os botões numéricos (1,2,3,...)
+            btns = self.driver.find_elements(
+                By.XPATH,
+                XPATHS["pagination"]["btns_pages"]
+            )
+
+            numeros = [
+                int(b.text)
+                for b in btns
+                if b.text and b.text.isdigit()
+            ]
+
+            if numeros:
+                total_paginas = max(numeros)
         except Exception as e:
-            logger.warning(f"Erro ao voltar para página 1: {e}")
-        
-        return contador
+            logger.warning(f"Erro ao descobrir total de páginas: {e}")
+
+        finally:
+            # 3. Voltar para a primeira página (<<)
+            try:
+                self.compat.safe_click(XPATHS["pagination"]["btn_first"])
+                # self.compat.testa_spinner()
+            except Exception as e:
+               logger.warning(f"Erro ao voltar para página 1: {e}")
+
+        return total_paginas
 
     def _read_current_table(self) -> List[Dict[str, Any]]:
         """Lê a tabela atual validando cada linha (Item 8)."""

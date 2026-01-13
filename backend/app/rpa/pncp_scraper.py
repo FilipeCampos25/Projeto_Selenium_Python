@@ -154,7 +154,7 @@ class PNCPScraperRefactored(BasePortalScraper):
         logger.info("Portal PNCP já deve estar aberto. Verifique o VNC na porta 7900.")
         # Não é necessário chamar self.driver.get(login_url) aqui, pois o Selenium já fez isso.
         # Se o driver não estiver na URL correta, o wait_manual_login falhará.
-        time.sleep(2)
+        time.sleep(1)
         logger.info("Pronto para login manual.")
 
 

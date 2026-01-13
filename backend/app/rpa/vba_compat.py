@@ -115,10 +115,10 @@ class VBACompat:
             )
             if scroll:
                 self.driver.execute_script("arguments[0].scrollIntoView({block: 'center'});", element)
-                time.sleep(0.5)
+                # time.sleep(0.5)
             
             element.click()
-            self.testa_spinner()
+            # self.testa_spinner()
             return True
         except Exception as e:
             logger.error(f"Erro ao clicar em {xpath}: {e}")
