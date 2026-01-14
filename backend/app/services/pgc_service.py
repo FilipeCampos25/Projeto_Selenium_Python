@@ -6,12 +6,13 @@ import logging
 from typing import Dict, Any, List
 from ..rpa.pgc_scraper_vba_logic import run_pgc_scraper_vba
 from ..db.repositories import ColetasRepository
+from .excel_persistence import ExcelPersistence
 
 logger = logging.getLogger(__name__)
 
 def coleta_pgc(ano_ref: str) -> List[Dict[str, Any]]:
     """
-    Orquestra a coleta do PGC e salva os dados brutos.
+    Orquestra a coleta do PGC e salva os dados brutos no Banco e no Excel.
     """
     if not ano_ref:
         raise ValueError("ano_ref é obrigatório.")
@@ -26,16 +27,26 @@ def coleta_pgc(ano_ref: str) -> List[Dict[str, Any]]:
         return []
 
     # 2. Armazenar no banco de dados
-    repo = ColetasRepository()
-    repo.salvar_bruto(fonte="PGC", dados=dados_brutos)
-    
-    # 3. Consolidar dados imediatamente após a coleta
     try:
-        logger.info("Iniciando consolidação automática dos dados coletados...")
+        repo = ColetasRepository()
+        repo.salvar_bruto(fonte="PGC", dados=dados_brutos)
+        
+        # Consolidar dados imediatamente após a coleta no banco
+        logger.info("Iniciando consolidação automática dos dados coletados no banco...")
         repo.consolidar_dados()
-        logger.info("Consolidação concluída com sucesso.")
+        logger.info("Consolidação no banco concluída com sucesso.")
     except Exception as e:
-        logger.error(f"Erro na consolidação automática pós-coleta: {e}")
+        logger.error(f"Erro na persistência ou consolidação no banco: {e}")
+
+    # 3. Armazenar no Excel (Nova funcionalidade seguindo lógica VBA)
+    try:
+        logger.info("Iniciando persistência no Excel seguindo lógica VBA...")
+        excel = ExcelPersistence()
+        excel.update_pgc_sheet(dados_brutos)
+        excel.sync_to_geral()
+        logger.info("Persistência no Excel concluída com sucesso.")
+    except Exception as e:
+        logger.error(f"Erro na persistência Excel: {e}")
 
     return dados_brutos
 

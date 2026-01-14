@@ -40,6 +40,8 @@ click==8.1.7
 # Debug
 debugpy>=1.6.0
 
+# Excel Persistence
+openpyxl==3.1.2
 
 # ==================== DEVELOPMENT ====================
 # Testing (opcional, comentar se não usar)
