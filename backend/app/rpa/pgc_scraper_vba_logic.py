@@ -108,7 +108,10 @@ class PGCScraperVBA:
         # Primeiro, calcula o total de páginas no VBA original (contando até o final)
         posM = self._count_total_pages()
         logger.info(f"Total de páginas detectadas: {posM}")
-        
+        # Antes de iniciar a leitura, aguarda estabilidade do DOM/tabela.
+        if not self._wait_table_stable(max_checks=6, interval=0.5):
+            logger.warning(f"Timeout aguardando estabilidade do DOM na página {pos}")
+
         while pos <= posM:
             logger.info(f"Coletando página {pos} de {posM}...")
             page_data = self._read_current_table()
@@ -171,6 +174,37 @@ class PGCScraperVBA:
                logger.warning(f"Erro ao voltar para página 1: {e}")
 
         return total_paginas
+
+    def _wait_table_stable(self, max_checks: int = 10, interval: float = 0.5) -> bool:
+        """
+        Aguarda a tabela estabilizar antes de iniciar a leitura da página.
+        Estratégia: verifica o número de linhas em duas leituras consecutivas
+        separadas por `interval`. Também chama `testa_spinner` para garantir
+        que o carregamento visual terminou.
+        Retorna True se a tabela parecer estável (linhas > 0 e mesmo count duas vezes),
+        ou False se timeout.
+        """
+        last_count = -1
+        checks = 0
+        while checks < max_checks:
+            try:
+                self.compat.testa_spinner()
+                rows = self.driver.find_elements(By.XPATH, XPATHS["table"]["rows"])
+                count = len(rows)
+                if count > 0 and count == last_count:
+                    return True
+                last_count = count
+            except Exception as e:
+                logger.debug(f"_wait_table_stable check error: {e}")
+            time.sleep(interval)
+            checks += 1
+
+        # Última tentativa: ver se há pelo menos alguma linha
+        try:
+            rows = self.driver.find_elements(By.XPATH, XPATHS["table"]["rows"])
+            return len(rows) > 0
+        except Exception:
+            return False
 
     def _read_current_table(self) -> List[Dict[str, Any]]:
         """Lê a tabela atual validando cada linha (Item 8)."""

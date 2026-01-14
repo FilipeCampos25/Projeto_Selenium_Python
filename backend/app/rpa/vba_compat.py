@@ -110,15 +110,30 @@ class VBACompat:
         """Clique seguro seguindo as regras do VBA (Item 6)."""
         self.reset_context()
         try:
+            # If there's a spinner overlay, wait a short time for it to disappear
+            try:
+                self.testa_spinner(timeout=10)
+            except Exception:
+                # Non-fatal: proceed to attempt the click
+                pass
+
             element = WebDriverWait(self.driver, 20).until(
                 EC.element_to_be_clickable((By.XPATH, xpath))
             )
             if scroll:
                 self.driver.execute_script("arguments[0].scrollIntoView({block: 'center'});", element)
-                # time.sleep(0.5)
-            
-            element.click()
-            # self.testa_spinner()
+                time.sleep(0.2)
+
+            # Try regular click, fallback to JS click if it's intercepted
+            try:
+                element.click()
+            except Exception as e_click:
+                logger.debug(f"Regular click failed ({e_click}), trying JS click for {xpath}")
+                try:
+                    self.driver.execute_script("arguments[0].click();", element)
+                except Exception:
+                    raise
+
             return True
         except Exception as e:
             logger.error(f"Erro ao clicar em {xpath}: {e}")

@@ -3,6 +3,7 @@ pgc_service.py
 Service layer para orquestrar a coleta do PGC e o tratamento de dados.
 """
 import logging
+import os
 from typing import Dict, Any, List
 from ..rpa.pgc_scraper_vba_logic import run_pgc_scraper_vba
 from ..db.repositories import ColetasRepository
@@ -41,7 +42,15 @@ def coleta_pgc(ano_ref: str) -> List[Dict[str, Any]]:
     # 3. Armazenar no Excel (Nova funcionalidade seguindo lógica VBA)
     try:
         logger.info("Iniciando persistência no Excel seguindo lógica VBA...")
-        excel = ExcelPersistence()
+        # Se o destino for um diretório (como era passado antes), criar um arquivo com nome baseado no ano
+        default_dest = r"C:\Users\jotar\Documents"
+        filename = f"PGC_{ano_ref}.xlsx"
+        if os.path.isdir(default_dest):
+            excel_path = os.path.join(default_dest, filename)
+        else:
+            excel_path = filename
+
+        excel = ExcelPersistence(excel_path)
         excel.update_pgc_sheet(dados_brutos)
         excel.sync_to_geral()
         logger.info("Persistência no Excel concluída com sucesso.")
