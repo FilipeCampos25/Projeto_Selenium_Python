@@ -127,10 +127,18 @@ class ColetasRepository:
                 # Se for PGC, também tentamos inserir/atualizar na PGC_2025 para as views funcionarem
                 if fonte == "PGC":
                     for item in dados:
+                        # Faz upsert baseado no campo `dfd`. Para isso, é necessário
+                        # que exista um índice/constraint único sobre PGC_2025(dfd).
+                        # A migration correspondente garante a existência do índice.
                         sql_pgc = text("""
                             INSERT INTO PGC_2025 (dfd, requisitante, descricao, valor, situacao, atualizado_em)
                             VALUES (:dfd, :requisitante, :descricao, :valor, :situacao, NOW())
-                            ON CONFLICT DO NOTHING
+                            ON CONFLICT (dfd) DO UPDATE SET
+                                requisitante = EXCLUDED.requisitante,
+                                descricao = EXCLUDED.descricao,
+                                valor = EXCLUDED.valor,
+                                situacao = EXCLUDED.situacao,
+                                atualizado_em = NOW()
                         """)
                         try:
                             conn.execute(sql_pgc, {
@@ -140,9 +148,9 @@ class ColetasRepository:
                                 "valor": item.get("valor"),
                                 "situacao": item.get("situacao")
                             })
-                        except Exception:
+                        except Exception as e:
                             # não interromper a gravação principal por causa disso
-                            logger.debug("Erro ao inserir item em PGC_2025, prosseguindo")
+                            logger.debug(f"Erro ao inserir/atualizar item em PGC_2025, prosseguindo: {e}")
 
                 conn.commit()
 
