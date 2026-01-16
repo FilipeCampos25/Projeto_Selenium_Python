@@ -108,9 +108,10 @@ class PGCScraperVBA:
         # Primeiro, calcula o total de páginas no VBA original (contando até o final)
         posM = self._count_total_pages()
         logger.info(f"Total de páginas detectadas: {posM}")
-        # Antes de iniciar a leitura, aguarda estabilidade do DOM/tabela.
-        if not self._wait_table_stable(max_checks=6, interval=0.5):
-            logger.warning(f"Timeout aguardando estabilidade do DOM na página {pos}")
+        
+        # Antes de iniciar a leitura, aguarda estabilidade do DOM/tabela
+        if not self._wait_table_stable(max_checks=6, interval=0.5): # .
+            logger.warning(f"Timeout aguardando estabilidade do DOM na página {pos}") # .
 
         while pos <= posM:
             logger.info(f"Coletando página {pos} de {posM}...")
@@ -175,6 +176,33 @@ class PGCScraperVBA:
 
         return total_paginas
 
+    def _read_current_table(self) -> List[Dict[str, Any]]:
+        """Lê a tabela atual validando cada linha (Item 8)."""
+        rows_data = []
+        rows = self.driver.find_elements(By.XPATH, XPATHS["table"]["rows"])
+        
+        for row in rows:
+            try:
+                cols = row.find_elements(By.XPATH, "./td")
+                if len(cols) < 10: continue
+                
+                # Índices baseados no pgc_xpaths.json (mapeados do VBA)
+                idx = XPATHS["table_columns"]
+                item = {
+                    "dfd": cols[idx["index_dfd"]-1].text.strip(),
+                    "requisitante": cols[idx["index_requisitante"]-1].text.strip(),
+                    "descricao": cols[idx["index_descricao"]-1].text.strip(),
+                    "valor": self._parse_currency(cols[idx["index_valor"]-1].text.strip()),
+                    "situacao": cols[idx["index_situacao"]-1].text.strip(),
+                    "coletado_em": time.strftime("%Y-%m-%d %H:%M:%S")
+                }
+                rows_data.append(item)
+            except Exception as e:
+                logger.warning(f"Erro ao ler linha da tabela: {e}")
+                
+        return rows_data
+
+    # Espera a tabela estabilizar antes de ler
     def _wait_table_stable(self, max_checks: int = 10, interval: float = 0.5) -> bool:
         """
         Aguarda a tabela estabilizar antes de iniciar a leitura da página.
@@ -205,32 +233,6 @@ class PGCScraperVBA:
             return len(rows) > 0
         except Exception:
             return False
-
-    def _read_current_table(self) -> List[Dict[str, Any]]:
-        """Lê a tabela atual validando cada linha (Item 8)."""
-        rows_data = []
-        rows = self.driver.find_elements(By.XPATH, XPATHS["table"]["rows"])
-        
-        for row in rows:
-            try:
-                cols = row.find_elements(By.XPATH, "./td")
-                if len(cols) < 10: continue
-                
-                # Índices baseados no pgc_xpaths.json (mapeados do VBA)
-                idx = XPATHS["table_columns"]
-                item = {
-                    "dfd": cols[idx["index_dfd"]-1].text.strip(),
-                    "requisitante": cols[idx["index_requisitante"]-1].text.strip(),
-                    "descricao": cols[idx["index_descricao"]-1].text.strip(),
-                    "valor": self._parse_currency(cols[idx["index_valor"]-1].text.strip()),
-                    "situacao": cols[idx["index_situacao"]-1].text.strip(),
-                    "coletado_em": time.strftime("%Y-%m-%d %H:%M:%S")
-                }
-                rows_data.append(item)
-            except Exception as e:
-                logger.warning(f"Erro ao ler linha da tabela: {e}")
-                
-        return rows_data
 
     def _go_to_next_page(self) -> bool:
         """
