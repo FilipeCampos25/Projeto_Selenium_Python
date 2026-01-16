@@ -42,18 +42,18 @@ def coleta_pgc(ano_ref: str) -> List[Dict[str, Any]]:
     # 3. Armazenar no Excel (Nova funcionalidade seguindo lógica VBA)
     try:
         logger.info("Iniciando persistência no Excel seguindo lógica VBA...")
-        # Se o destino for um diretório (como era passado antes), criar um arquivo com nome baseado no ano
-        default_dest = r"C:\Users\Public\Documents"
+        # Usar diretório /app/outputs mapeado via volume do Docker
+        outputs_dir = "/app/outputs"
+        os.makedirs(outputs_dir, exist_ok=True)
         filename = f"PGC_{ano_ref}.xlsx"
-        if os.path.isdir(default_dest):
-            excel_path = os.path.join(default_dest, filename)
-        else:
-            excel_path = filename
+        excel_path = os.path.join(outputs_dir, filename)
 
         excel = ExcelPersistence(excel_path)
         excel.update_pgc_sheet(dados_brutos)
         excel.sync_to_geral()
-        logger.info("Persistência no Excel concluída com sucesso.")
+        logger.info(f"✅ Persistência no Excel concluída com sucesso!")
+        logger.info(f"📁 Arquivo salvo em: {excel_path}")
+        logger.info(f"📂 Acesse em: ./outputs/{filename}")
     except Exception as e:
         logger.error(f"Erro na persistência Excel: {e}")
 

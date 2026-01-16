@@ -64,6 +64,7 @@ services:
     volumes:
       - ./backend:/app/backend
       - ./frontend:/app/frontend
+      - ./outputs:/app/outputs
 
     depends_on:
       db:
@@ -83,6 +84,7 @@ services:
 
 volumes:
   pg_data:
+  outputs:
 
 networks:
   projnet:
