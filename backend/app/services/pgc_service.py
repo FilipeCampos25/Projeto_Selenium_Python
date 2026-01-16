@@ -43,7 +43,7 @@ def coleta_pgc(ano_ref: str) -> List[Dict[str, Any]]:
     try:
         logger.info("Iniciando persistência no Excel seguindo lógica VBA...")
         # Se o destino for um diretório (como era passado antes), criar um arquivo com nome baseado no ano
-        default_dest = r"C:\Users\jotar\Documents"
+        default_dest = r"C:\Users\Public\Documents"
         filename = f"PGC_{ano_ref}.xlsx"
         if os.path.isdir(default_dest):
             excel_path = os.path.join(default_dest, filename)
