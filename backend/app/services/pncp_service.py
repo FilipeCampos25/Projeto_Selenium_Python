@@ -3,9 +3,8 @@ pncp_service.py
 Service layer para orquestrar a coleta do PNCP e o tratamento de dados.
 
 HISTÓRICO DE ADAPTAÇÃO:
-- Passo 11: Ativação da lógica real com paginação fiel ao VBA.
-- Passo 14: Ativação controlada da persistência no banco após validação.
-- Passo 16: Implementação de Feature Flag para alternar entre Mock e Real.
+- Passo 11 a 19: Implementação de fidelidade, erros, logs, persistência e documentação.
+- Passo 20: Desativação definitiva do mock e ativação total da implementação real.
 """
 from ..rpa.pncp_scraper_vba_logic import run_pncp_scraper_vba
 from ..db.repositories import ColetasRepository
@@ -19,87 +18,73 @@ logger = logging.getLogger(__name__)
 def coleta_pncp(username: str, password: str, ano_ref: str, headless: bool = True, timeout: int = 20, use_mock: bool = None) -> Dict[str, Any]:
     """
     Orquestra a coleta do PNCP e persiste o resultado no Banco e no Excel.
-    Implementação do Passo 16: Respeita a Feature Flag FEATURE_PNCP_REAL.
+    Implementação do Passo 20: Foco total na implementação real validada.
     """
     if not ano_ref:
         raise ValueError("ano_ref is required")
     
-    # Lógica da Feature Flag (Passo 16)
-    # Se use_mock for passado explicitamente na chamada (ex: via API), ele tem precedência.
-    # Caso contrário, usa o valor da Feature Flag global.
+    # Lógica de Decisão (Passo 20)
+    # A Feature Flag agora é True por padrão. O mock só é usado se explicitamente solicitado.
     real_enabled = is_pncp_real_enabled()
-    
-    # Se use_mock for True, força mock. Se for False, força real. 
-    # Se for None, segue a Feature Flag (Se real_enabled=True -> use_mock=False)
     final_use_mock = use_mock if use_mock is not None else (not real_enabled)
     
-    logger.info(f"=== [SERVICE] INICIANDO ORQUESTRAÇÃO PNCP - ANO {ano_ref} ===")
-    logger.info(f"[LOG-VBA] Feature Flag PNCP_REAL: {real_enabled} | Modo Final Mock: {final_use_mock}")
+    logger.info(f"=== [SERVICE] INICIANDO COLETA PNCP DEFINITIVA - ANO {ano_ref} ===")
     
     dados_brutos: List[Dict[str, Any]] = []
     
-    # --- ESCOLHA DA FONTE DE DADOS ---
     if final_use_mock:
-        logger.info("[LOG-VBA] Utilizando MOCK para coleta PNCP (Modo de Teste/Segurança)")
+        # MOCK MANTIDO APENAS PARA TESTES DE EMERGÊNCIA (Passo 20)
+        logger.info("[AVISO] Modo MOCK ativado manualmente para o PNCP.")
         dados_brutos = [
             {
-                "col_a_contratacao": "MOCK-001/2025",
-                "col_b_descricao": "ITEM MOCK PARA TESTE DE FLUXO (FEATURE FLAG ATIVA)",
-                "col_c_categoria": "Serviços",
-                "col_d_valor": 1000.00,
-                "col_e_inicio": "2025-01-01",
-                "col_f_fim": "2025-12-31",
+                "col_a_contratacao": "MOCK-EMERGENCIA",
+                "col_b_descricao": "MODO MOCK ATIVADO MANUALMENTE",
+                "col_c_categoria": "Teste",
+                "col_d_valor": 0.0,
+                "col_e_inicio": None,
+                "col_f_fim": None,
                 "col_g_status": "MOCK",
                 "col_h_status_tipo": "MOCK",
-                "col_i_dfd": "000/2025"
+                "col_i_dfd": "000/0000"
             }
         ]
     else:
-        # IMPLEMENTAÇÃO REAL (Lógica VBA fiel com Passos 11, 12 e 13)
-        logger.info("[LOG-VBA] Iniciando implementação real (Lógica VBA Fiel - Passo 16)")
+        # IMPLEMENTAÇÃO REAL VALIDADA (Lógica VBA Fiel)
+        logger.info("[LOG-VBA] Executando implementação real validada (Passo 20).")
         dados_brutos = run_pncp_scraper_vba(ano_ref=ano_ref)
     
     resultado = {
         "status": "ok" if dados_brutos else "no_data",
         "total_itens": len(dados_brutos),
         "ano_referencia": ano_ref,
-        "is_mock": final_use_mock,
-        "feature_flag_real": real_enabled
+        "modo": "MOCK" if final_use_mock else "REAL"
     }
 
-    # --- PERSISTÊNCIA CONTROLADA (Passo 14) ---
-    if dados_brutos:
-        logger.info(f"[LOG-VBA] Iniciando persistência controlada de {len(dados_brutos)} itens...")
+    # --- PERSISTÊNCIA NO BANCO (Passo 14) ---
+    if dados_brutos and not final_use_mock:
+        logger.info(f"[LOG-VBA] Persistindo {len(dados_brutos)} itens no Postgres...")
         try:
             repo = ColetasRepository()
             repo.salvar_bruto(fonte="PNCP", dados=dados_brutos)
-            
-            try:
-                logger.info("[LOG-VBA] Consolidando dados na tabela PNCP...")
-                repo.consolidar_dados()
-                resultado["_status_db"] = "consolidado"
-            except Exception as e:
-                logger.error(f"[ERRO-DB] Falha na consolidação: {e}")
-                resultado["_status_db"] = "erro_consolidacao"
-            
+            repo.consolidar_dados()
+            resultado["_status_db"] = "consolidado"
         except Exception as e:
-            logger.exception("[ERRO-DB] Erro crítico na persistência")
-            resultado["_status_db"] = "erro_persistência"
+            logger.error(f"[ERRO-DB] Falha na persistência: {e}")
+            resultado["_status_db"] = "erro"
 
     # --- PERSISTÊNCIA NO EXCEL (Passo 15) ---
-    try:
-        if dados_brutos:
-            logger.info("[LOG-VBA] Atualizando Excel (PGC_2025.xlsx)...")
+    if dados_brutos:
+        try:
+            logger.info("[LOG-VBA] Atualizando Excel PGC_2025.xlsx...")
             outputs_dir = "/app/outputs"
             import os
             os.makedirs(outputs_dir, exist_ok=True)
-            filename = f"PGC_{ano_ref}.xlsx"
-            excel_path = os.path.join(outputs_dir, filename)
+            excel_path = os.path.join(outputs_dir, f"PGC_{ano_ref}.xlsx")
             
             excel = ExcelPersistence(excel_path)
             excel.update_pncp_sheet(dados_brutos)
-            logger.info(f"[LOG-VBA] Excel atualizado com sucesso.")
-    except Exception as e:
-        logger.error(f"[ERRO-EXCEL] Falha no Excel: {e}")
+            logger.info("[LOG-VBA] Excel atualizado.")
+        except Exception as e:
+            logger.error(f"[ERRO-EXCEL] Falha no Excel: {e}")
 
     return resultado
