@@ -76,18 +76,27 @@ class VBACompat:
             logger.warning(f"Erro ao resetar contexto: {e}")
 
     def testa_spinner(self, timeout=60):
-        """Emula o 'testa_spinner' do VBA."""
-        spinner_xpath = "//div[@id='spinner']"
-        try:
-            WebDriverWait(self.driver, 2).until(EC.presence_of_element_located((By.XPATH, spinner_xpath)))
-        except:
-            pass
-
-        try:
-            WebDriverWait(self.driver, timeout).until(EC.invisibility_of_element_located((By.XPATH, spinner_xpath)))
-        except TimeoutException:
-            pass
+        """
+        Emula o 'testa_spinner' do VBA (Passo 8).
+        Fidelidade total ao loop: Do ... Loop While driver.FindElementByXPath(caminho).IsPresent
+        """
+        spinner_xpath = "//body/app-root/ng-http-loader/div[@id='spinner']"
+        start_time = time.time()
         
+        # O VBA usa um loop Do...While com Application.Wait interno
+        while time.time() - start_time < timeout:
+            try:
+                # No VBA: driver.FindElementByXPath(caminho, timeout:=1, Raise:=False).IsPresent
+                spinners = self.driver.find_elements(By.XPATH, spinner_xpath)
+                if not spinners or not spinners[0].is_displayed():
+                    break
+            except Exception:
+                break
+            
+            # VBA: Application.Wait Now + (TimeValue("00:00:01") / 10) -> 0.1s
+            time.sleep(0.1)
+        
+        # O slow_down() emula o tempo de processamento humano/sistema do VBA
         self.slow_down()
 
     def wait_for_checkpoint(self, xpath, text=None, timeout=30):
