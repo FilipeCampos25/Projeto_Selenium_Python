@@ -1,7 +1,7 @@
 """
 pncp_scraper_vba_logic.py
 Scraper do PNCP replicando FIELMENTE a lógica do VBA (Sub Dados_PNCP).
-Integrado com VBACompat para garantir equivalência e estabilidade.
+Implementação do Passo 3: Inventário de campos e validações de integridade.
 """
 import json
 import time
@@ -22,12 +22,16 @@ with open(XPATHS_FILE, 'r', encoding='utf-8') as f:
     XPATHS = json.load(f)
 
 def so_numero(text: str) -> str:
-    """Emula a função SoNumero do VBA."""
+    """Emula a função SoNumero do VBA: remove tudo que não é dígito."""
     if not text:
         return ""
     return "".join(re.findall(r'\d+', text))
 
 class PNCPScraperVBA:
+    """
+    Classe que implementa o inventário de campos do PNCP (Passo 3).
+    Mantém fidelidade total aos tipos de dados e formatações do VBA.
+    """
     def __init__(self, driver: WebDriver, ano_ref: str = "2025"):
         self.driver = driver
         self.ano_ref = ano_ref
@@ -36,12 +40,12 @@ class PNCPScraperVBA:
 
     def Dados_PNCP(self) -> List[Dict[str, Any]]:
         """Replica Sub Dados_PNCP() do VBA."""
-        logger.info("=== INICIANDO COLETA PNCP (Lógica VBA) ===")
+        logger.info("=== INICIANDO COLETA PNCP (Lógica VBA - Passo 3) ===")
         
-        # 1. Testa o spinner
+        # 1. Testa o spinner (VBA: Call testa_spinner)
         self.compat.testa_spinner()
         
-        # 2. Aguarda a tela aparecer (Formação do PCA)
+        # 2. Aguarda a tela aparecer (VBA: driver.FindElementByXPath(...).Click)
         try:
             self.compat.wait_for_checkpoint(XPATHS["pca_selection"]["button_formacao_pca"], timeout=50)
         except CheckpointFailureError:
@@ -70,7 +74,7 @@ class PNCPScraperVBA:
         self.compat.safe_click(li_pca_xpath)
         self.compat.testa_spinner()
 
-        # 7. Dá um tempo (Application.Wait Now + TimeValue("00:00:01"))
+        # 7. Dá um tempo (VBA: Application.Wait Now + TimeValue("00:00:01"))
         time.sleep(1)
 
         # --- SEÇÃO REPROVADAS ---
@@ -94,10 +98,9 @@ class PNCPScraperVBA:
         time.sleep(1)
         self.compat.testa_spinner()
 
-        # Testa se não encontrou nada
+        # Testa se não encontrou nada (VBA: If driver.FindElementsByXPath(...).Count = 0 Then)
         xpath_vazio = f"//div[@aria-labelledby='{aba_id}']/div[@class='search-results']/div/div/div/div/div[2]/span"
         try:
-            # Se o elemento de "nada encontrado" NÃO estiver presente, prossegue
             if len(self.driver.find_elements(By.XPATH, xpath_vazio)) == 0:
                 
                 # Obtem o total de demandas
@@ -121,7 +124,7 @@ class PNCPScraperVBA:
                 self.compat.safe_click(xpath_tbody)
                 self.compat.testa_spinner()
 
-                # Rola a tabela até carregar todos os itens (Simula o Do While do VBA)
+                # Rola a tabela até carregar todos os itens (VBA: Do While driver.FindElementsByXPath(...).Count = 0)
                 xpath_ultimo_item = f"{xpath_tbody}[@class='p-element p-datatable-tbody']/div[{demandas}]"
                 
                 max_scroll_attempts = 20
@@ -135,15 +138,23 @@ class PNCPScraperVBA:
                 time.sleep(1)
                 self.compat.testa_spinner()
 
-                # Varre as demandas
+                # Varre as demandas (VBA: For i = 1 To demandas)
                 for i in range(1, demandas + 1):
                     try:
                         base_xpath = XPATHS["table"]["item_base_template"].replace("{aba_id}", aba_id).replace("{index}", str(i))
                         f = XPATHS["fields"]
                         
-                        # Mapeamento fiel às colunas do Excel (A a I) no VBA
+                        # Validação de existência do elemento antes da coleta (Imita o comportamento do driver.FindElement no VBA)
+                        try:
+                            el_contratacao = self.driver.find_element(By.XPATH, f"{base_xpath}{f['contratacao']}")
+                        except:
+                            logger.warning(f"Item {i} não encontrado na aba {aba_id}. Pulando.")
+                            continue
+
+                        # INVENTÁRIO DE CAMPOS (Passo 3)
+                        # Mapeamento fiel às colunas do Excel (A a I) e tipos de dados do VBA
                         item = {
-                            "col_a_contratacao": self.driver.find_element(By.XPATH, f"{base_xpath}{f['contratacao']}").text,
+                            "col_a_contratacao": el_contratacao.text,
                             "col_b_descricao": self.driver.find_element(By.XPATH, f"{base_xpath}{f['descricao']}").text,
                             "col_c_categoria": self.driver.find_element(By.XPATH, f"{base_xpath}{f['categoria']}").text,
                             "col_d_valor": self._parse_vba_cdbl(self.driver.find_element(By.XPATH, f"{base_xpath}{f['valor']}").text),
@@ -154,47 +165,56 @@ class PNCPScraperVBA:
                             "col_i_dfd": self._format_dfd(self.driver.find_element(By.XPATH, f"{base_xpath}{f['descricao']}").text)
                         }
                         
-                        # Correção de erro temporário do VBA (Linha 2381/2497/2614)
+                        # Regra de Negócio Específica (VBA: If ... Value = "157/2024" Then ... = "157/2025")
                         if item["col_i_dfd"] == "157/2024":
                             item["col_i_dfd"] = "157/2025"
                             
-                        # Status específico para Pendentes (Linha 2629)
+                        # Status específico para Pendentes (VBA: .Range("G" ...).Value = driver.FindElementByXPath(...).Text)
                         if aba_id == "pendentes":
-                            item["col_g_status"] = self.driver.find_element(By.XPATH, f"{base_xpath}{f['status_pendente']}").text
+                            try:
+                                item["col_g_status"] = self.driver.find_element(By.XPATH, f"{base_xpath}{f['status_pendente']}").text
+                            except:
+                                pass # Mantém o status padrão se falhar
 
                         self.data_collected.append(item)
                     except Exception as e:
+                        # No VBA, erros individuais no loop geralmente não param a execução (On Error Resume Next implícito no fluxo)
                         logger.warning(f"Erro ao coletar item {i} na aba {aba_id}: {e}")
 
         except Exception as e:
             logger.error(f"Erro na coleta da aba {aba_id}: {e}")
 
     def _parse_vba_cdbl(self, text: str) -> float:
-        """Emula CDbl do VBA."""
+        """Emula CDbl do VBA: converte string monetária para Double."""
         if not text or text.strip() == "":
             return 0.0
         try:
+            # Limpeza idêntica ao comportamento implícito do CDbl em strings PT-BR
             clean = text.replace("R$", "").replace(".", "").replace(",", ".").strip()
             return float(clean)
         except:
             return 0.0
 
     def _parse_vba_cdate(self, text: str) -> str:
-        """Emula CDate do VBA, retornando string formatada ISO para o DB."""
+        """Emula CDate do VBA: converte string de data para objeto de data (ISO string para o DB)."""
         if not text or text.strip() == "":
             return None
         try:
-            # Assume formato DD/MM/YYYY
+            # VBA CDate em sistema PT-BR espera DD/MM/YYYY
             dt = datetime.strptime(text.strip(), "%d/%m/%Y")
             return dt.strftime("%Y-%m-%d")
         except:
             return text
 
     def _format_dfd(self, text: str) -> str:
-        """Emula Format(Left(SoNumero(...), 7), "@@@\/@@@@") do VBA."""
+        """
+        Emula a lógica complexa do VBA para o DFD:
+        Format(Left(SoNumero(descricao), 7), "@@@\/@@@@")
+        """
         nums = so_numero(text)
         if len(nums) >= 7:
             left_7 = nums[:7]
+            # Formata como 000/0000
             return f"{left_7[:3]}/{left_7[3:]}"
         return nums
 
