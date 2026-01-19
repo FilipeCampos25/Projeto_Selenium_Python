@@ -145,6 +145,13 @@ class ColetasRepository:
                         try:
                             # Valor padrão para id_pca conforme schema
                             id_pca_default = f"001/{datetime.now().year}"
+                            
+                            # Log de auditoria para validação cruzada (Passo 10)
+                            logger.info(
+                                f"[AUDITORIA-BANCO] Persistindo PNCP: {item.get('col_a_contratacao')} | "
+                                f"Valor: {item.get('col_d_valor')} | DFD: {item.get('col_i_dfd')}"
+                            )
+
                             conn.execute(sql_pncp, {
                                 "id_contratacao": item.get("col_a_contratacao"),
                                 "descricao": item.get("col_b_descricao"),

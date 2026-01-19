@@ -222,6 +222,17 @@ class PNCPScraperVBA:
 
                 # Validação via Contrato de Dados (Passo 5)
                 validated_item = PNCPItemSchema(**raw_item)
+                
+                # --- LOG DE VALIDAÇÃO CRUZADA (Passo 10) ---
+                # Este log permite comparar linha a linha com o Excel gerado pelo VBA.
+                logger.info(
+                    f"[VALIDACAO-CRUZADA] Item {i} Aba {aba_id} | "
+                    f"A:{validated_item.col_a_contratacao} | "
+                    f"D:{validated_item.col_d_valor} | "
+                    f"I:{validated_item.col_i_dfd} | "
+                    f"Status:{validated_item.col_g_status}"
+                )
+                
                 self.data_collected.append(validated_item.dict())
             except Exception as e:
                 logger.warning(f"Erro ao coletar item {i} na aba {aba_id}: {e}")
