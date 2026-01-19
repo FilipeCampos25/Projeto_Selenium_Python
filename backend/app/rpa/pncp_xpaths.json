@@ -1,22 +1,32 @@
 {
-  "login_username": "//input[@id='txtUsuario']",
-  "login_password": "//input[@id='txtSenha']",
-  "login_submit": "//*[@id='btnEntrar']",
-
-  "year_input": "//*[@id='ctl00_ContentPlaceHolder1_txtAno']",
-  "year_submit": "//*[@id='btnAvancar']",
-
-  "menu_consulta": "//*[@id='ctl00_ContentPlaceHolder1_gdvProgramas']",
-
-  "filtro_ano": "//*[@id='ctl00_ContentPlaceHolder1_ddlAno']",
-  "buscar_btn": "//*[@id='ctl00_ContentPlaceHolder1_btnPesquisar']",
-
-  "results_table": "//*[@id='ctl00_ContentPlaceHolder1_gdvProgramas']/tbody",
-  "results_rows": "//*[@id='ctl00_ContentPlaceHolder1_gdvProgramas']/tbody/tr",
-  "row_cols": "./td",
-
-  "pagination_next": "//app-area-governo/div/div[3]/div/div[2]/div/div[1]/div/span[2]/app-item-trabalho/p-dataview/div/p-paginator/div/button[3]",
-  "pagination_disabled_next": "//a[contains(@class,'page-next') and contains(@class,'disabled')]",
-
-  "row_expand_btn": "//p[text()=' Detalhar Documento de Formalização da Demanda ']"
+  "comment": "XPaths do PNCP extraídos do código VBA para replicar exatamente a mesma lógica",
+  "login": {
+    "btn_expand_governo": "//button[@class='br-button circle expand governo']",
+    "span_pgc_title": "//span[text()='Planejamento e Gerenciamento de Contratações']",
+    "div_pgc_access": "//div/p[2][text()='PGC']"
+  },
+  "pca_selection": {
+    "dropdown_pca": "//p-dropdown[@placeholder='Selecione PCA']",
+    "li_pca_ano_template": "//li[starts-with(@aria-label,'PCA {ano} -')]",
+    "button_formacao_pca": "//button/span[text()='Formação do PCA']"
+  },
+  "tabs": {
+    "reprovadas": "//a[@id='contratacoes-reprovadas']",
+    "aprovadas": "//a[@id='contratacoes-aprovadas']",
+    "pendentes": "//a[@id='contratacoes-pendentes']"
+  },
+  "table": {
+    "tbody_template": "//div[@aria-labelledby='{aba_id}']/div[@class='search-results']/div/p-table/div/div/table/tbody",
+    "label_total_template": "//div[@aria-labelledby='{aba_id}']/div[@class='search-results']/div/p-table/div/div/table/thead/div/div/div/div/div[2]/label",
+    "item_base_template": "//div[@aria-labelledby='{aba_id}']/div[@class='search-results']/div/p-table/div/div/table/tbody[@class='p-element p-datatable-tbody']/div[{index}]/p-card/div/div[@class='p-card-body']/div[@class='p-card-content']/div[1]/div"
+  },
+  "fields": {
+    "contratacao": "/div[1]/div/div[2]/a",
+    "descricao": "/div[2]/p",
+    "categoria": "/div[3]/p",
+    "valor": "/div[5]/p",
+    "inicio": "/div[6]/p",
+    "fim": "/div[7]/p",
+    "status_pendente": "/div[1]/div/div[2]/div/span"
+  }
 }

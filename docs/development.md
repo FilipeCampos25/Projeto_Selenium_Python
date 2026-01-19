@@ -18,7 +18,7 @@ docs/
 ## Primeiros Passos
 1. Instalar Docker.
 2. `docker compose up --build`.
-3. Acessar http://localhost:8000/docs.
+3. Acessar http://localhost:8000.
 
 ## Workflows Críticos
 - **Iniciar dev**: `docker compose up --build`.

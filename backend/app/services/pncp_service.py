@@ -2,7 +2,7 @@
 pncp_service.py
 Service layer para orquestrar a coleta do PNCP e o tratamento de dados.
 """
-from ..rpa.pncp_scraper import login_and_search
+from ..rpa.pncp_scraper_vba_logic import run_pncp_scraper_vba
 from ..db.repositories import ColetasRepository
 from .excel_persistence import ExcelPersistence
 from typing import Dict, Any
@@ -14,32 +14,34 @@ def coleta_pncp(username: str, password: str, ano_ref: str, headless: bool = Tru
     """
     Orquestra a coleta do PNCP e persiste o resultado no Banco e no Excel.
     """
-    if not username or not password:
-        raise ValueError("username and password are required")
+    # username e password são mantidos na assinatura para compatibilidade, 
+    # mas o login é manual via noVNC seguindo a lógica VBA.
     if not ano_ref:
         raise ValueError("ano_ref is required")
-    logger.info(f"Iniciando coleta PNCP para o ano {ano_ref}")
     
-    # 1. Executa o scraper
-    resultado = login_and_search(
-        username=username, 
-        password=password, 
-        ano_ref=ano_ref, 
-        headless=headless, 
-        timeout=timeout
-    )
+    logger.info(f"Iniciando coleta PNCP para o ano {ano_ref} (Lógica VBA)")
+    
+    # 1. Executa o scraper (Lógica VBA fiel)
+    dados_brutos = run_pncp_scraper_vba(ano_ref=ano_ref)
+    
+    resultado = {
+        "status": "ok" if dados_brutos else "no_data",
+        "collected_data": dados_brutos,
+        "ano_referencia": ano_ref
+    }
 
     # 2. Persiste no banco de dados
     try:
         repo = ColetasRepository()
-        # O scraper PNCP retorna um dict com metadados e possivelmente uma lista de itens
-        repo.salvar_bruto(fonte="PNCP", dados=[resultado])
-        
-        # Tenta consolidar no banco
-        try:
-            repo.consolidar_dados()
-        except Exception as e:
-            logger.error(f"Erro na consolidação PNCP no banco: {e}")
+        # Salva os dados brutos coletados
+        if dados_brutos:
+            repo.salvar_bruto(fonte="PNCP", dados=dados_brutos)
+            
+            # Tenta consolidar no banco
+            try:
+                repo.consolidar_dados()
+            except Exception as e:
+                logger.error(f"Erro na consolidação PNCP no banco: {e}")
             
         resultado["_status"] = "salvo"
     except Exception as e:
@@ -49,10 +51,15 @@ def coleta_pncp(username: str, password: str, ano_ref: str, headless: bool = Tru
     # 3. Persiste no Excel (Nova funcionalidade seguindo lógica VBA)
     try:
         logger.info("Iniciando persistência PNCP no Excel seguindo lógica VBA...")
-        excel = ExcelPersistence()
-        # O resultado do PNCP contém a chave 'collected_data' com a lista de itens
-        items_coletados = resultado.get("collected_data", [])
-        excel.update_pncp_sheet(items_coletados)
+        # Usar diretório /app/outputs mapeado via volume do Docker
+        outputs_dir = "/app/outputs"
+        import os
+        os.makedirs(outputs_dir, exist_ok=True)
+        filename = f"PGC_{ano_ref}.xlsx"
+        excel_path = os.path.join(outputs_dir, filename)
+        
+        excel = ExcelPersistence(excel_path)
+        excel.update_pncp_sheet(dados_brutos)
         logger.info("Persistência PNCP no Excel concluída com sucesso.")
     except Exception as e:
         logger.error(f"Erro na persistência PNCP no Excel: {e}")

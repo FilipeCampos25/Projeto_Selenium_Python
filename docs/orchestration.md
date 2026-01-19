@@ -11,7 +11,7 @@
 1. Clonar repo.
 2. Configurar `.env` com DATABASE_URL, etc.
 3. `docker compose up --build`.
-4. Acessar API em http://localhost:8000/docs.
+4. Acessar API em http://localhost:8000.
 5. Para debug: `SELENIUM_HEADLESS=false` e `DEBUGPY=1`.
 
 ## Produção
