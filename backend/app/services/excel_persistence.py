@@ -1,8 +1,15 @@
+"""
+excel_persistence.py
+Gerencia a persistência de dados no arquivo Excel seguindo fielmente a lógica do VBA original.
+
+HISTÓRICO DE ADAPTAÇÃO:
+- Passo 15: Reativação da exportação para Excel com estrutura fiel ao VBA (Colunas A a I).
+"""
 import os
 import logging
 from typing import List, Dict, Any
 from openpyxl import load_workbook, Workbook
-from openpyxl.styles import NamedStyle
+from openpyxl.styles import Font, Alignment, PatternFill
 from datetime import datetime
 
 logger = logging.getLogger(__name__)
@@ -10,14 +17,16 @@ logger = logging.getLogger(__name__)
 class ExcelPersistence:
     """
     Gerencia a persistência de dados no arquivo Excel seguindo fielmente a lógica do VBA original.
+    Garante que a aba 'PNCP' seja atualizada sem corromper a aba 'PGC'.
     """
     def __init__(self, file_path: str = "PGC_2025.xlsm"):
         self.file_path = file_path
         self._ensure_file_exists()
 
     def _ensure_file_exists(self):
+        """Garante que o arquivo Excel exista, criando-o se necessário."""
         if not os.path.exists(self.file_path):
-            logger.info(f"Criando novo arquivo Excel: {self.file_path}")
+            logger.info(f"[LOG-VBA] Criando novo arquivo Excel: {self.file_path}")
             wb = Workbook()
             if "Sheet" in wb.sheetnames:
                 wb["Sheet"].title = "PGC"
@@ -43,7 +52,10 @@ class ExcelPersistence:
             wb.save(self.file_path)
 
     def update_pgc_sheet(self, data: List[Dict[str, Any]]):
-        """Atualiza a aba PGC seguindo a lógica do VBA."""
+        """
+        Atualiza a aba PGC seguindo a lógica do VBA.
+        MÉTODO PRESERVADO: Não alterado para garantir a integridade do módulo PGC.
+        """
         try:
             wb = load_workbook(self.file_path)
             ws = wb["PGC"]
@@ -70,40 +82,73 @@ class ExcelPersistence:
     def update_pncp_sheet(self, data: List[Dict[str, Any]]):
         """
         Atualiza a aba PNCP seguindo fielmente o mapeamento de colunas do VBA (A a I).
+        Implementação do Passo 15: Reativação da exportação com formatação e auditoria.
         """
+        logger.info(f"[LOG-VBA] Iniciando atualização da aba PNCP no Excel...")
         try:
             wb = load_workbook(self.file_path)
+            
+            if "PNCP" not in wb.sheetnames:
+                wb.create_sheet("PNCP")
+            
             ws = wb["PNCP"]
-            for entry in data:
-                contratacao = str(entry.get("col_a_contratacao", "")).strip()
-                if not contratacao: continue
-                
-                found_row = None
-                for row in range(2, ws.max_row + 1):
-                    if str(ws.cell(row=row, column=1).value).strip() == contratacao:
-                        found_row = row
-                        break
-                
-                target_row = found_row if found_row else ws.max_row + 1
-                
-                # Mapeamento fiel às colunas do VBA
-                ws.cell(row=target_row, column=1, value=entry.get("col_a_contratacao"))
-                ws.cell(row=target_row, column=2, value=entry.get("col_b_descricao"))
-                ws.cell(row=target_row, column=3, value=entry.get("col_c_categoria"))
-                ws.cell(row=target_row, column=4, value=entry.get("col_d_valor"))
-                ws.cell(row=target_row, column=5, value=entry.get("col_e_inicio"))
-                ws.cell(row=target_row, column=6, value=entry.get("col_f_fim"))
-                ws.cell(row=target_row, column=7, value=entry.get("col_g_status"))
-                ws.cell(row=target_row, column=8, value=entry.get("col_h_status_tipo"))
-                ws.cell(row=target_row, column=9, value=entry.get("col_i_dfd"))
+            
+            # Limpar dados antigos para garantir fidelidade à nova coleta (VBA: ClearContents)
+            if ws.max_row > 1:
+                ws.delete_rows(2, ws.max_row)
+
+            # Estilização do cabeçalho (Simulando o padrão profissional do VBA)
+            header_fill = PatternFill(start_color="D3D3D3", end_color="D3D3D3", fill_type="solid")
+            header_font = Font(bold=True)
+            for col in range(1, 10):
+                cell = ws.cell(row=1, column=col)
+                cell.fill = header_fill
+                cell.font = header_font
+                cell.alignment = Alignment(horizontal="center")
+
+            for row_idx, entry in enumerate(data, 2):
+                # Mapeamento fiel às colunas do VBA (Passo 3/15)
+                # Coluna A: Contratação
+                ws.cell(row=row_idx, column=1, value=entry.get("col_a_contratacao"))
+                # Coluna B: Descrição
+                ws.cell(row=row_idx, column=2, value=entry.get("col_b_descricao"))
+                # Coluna C: Categoria
+                ws.cell(row=row_idx, column=3, value=entry.get("col_c_categoria"))
+                # Coluna D: Valor (VBA: CDbl)
+                cell_valor = ws.cell(row=row_idx, column=4, value=entry.get("col_d_valor"))
+                cell_valor.number_format = '#,##0.00'
+                # Coluna E: Início (VBA: CDate)
+                ws.cell(row=row_idx, column=5, value=entry.get("col_e_inicio"))
+                # Coluna F: Fim (VBA: CDate)
+                ws.cell(row=row_idx, column=6, value=entry.get("col_f_fim"))
+                # Coluna G: Status
+                ws.cell(row=row_idx, column=7, value=entry.get("col_g_status"))
+                # Coluna H: Status Tipo
+                ws.cell(row=row_idx, column=8, value=entry.get("col_h_status_tipo"))
+                # Coluna I: DFD (VBA: Format)
+                ws.cell(row=row_idx, column=9, value=entry.get("col_i_dfd"))
+
+            # Ajuste automático de largura (VBA: Columns.AutoFit)
+            for col in ws.columns:
+                max_length = 0
+                column = col[0].column_letter
+                for cell in col:
+                    try:
+                        if len(str(cell.value)) > max_length:
+                            max_length = len(str(cell.value))
+                    except: pass
+                ws.column_dimensions[column].width = min(max_length + 2, 50)
 
             wb.save(self.file_path)
-            logger.info("Aba PNCP atualizada com sucesso (Mapeamento VBA).")
+            logger.info(f"[LOG-VBA] Aba PNCP atualizada com sucesso ({len(data)} itens).")
         except Exception as e:
-            logger.error(f"Erro ao atualizar aba PNCP no Excel: {e}")
+            logger.error(f"[ERRO-EXCEL] Falha ao atualizar aba PNCP no Excel: {e}")
 
     def sync_to_geral(self):
-        """Sincroniza dados entre PGC e Geral seguindo a lógica do VBA."""
+        """
+        Sincroniza dados entre PGC e Geral seguindo a lógica do VBA.
+        MÉTODO PRESERVADO: Não alterado para garantir a integridade do módulo PGC.
+        """
         try:
             wb = load_workbook(self.file_path)
             if "PGC" not in wb.sheetnames or "Geral" not in wb.sheetnames:
