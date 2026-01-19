@@ -13,6 +13,7 @@ from typing import Dict, List, Optional, Any
 from selenium.webdriver.remote.webdriver import WebDriver
 from selenium.webdriver.common.by import By
 from .vba_compat import VBACompat, CheckpointFailureError
+from ..api.schemas import PNCPItemSchema
 
 logger = logging.getLogger(__name__)
 
@@ -151,9 +152,9 @@ class PNCPScraperVBA:
                             logger.warning(f"Item {i} não encontrado na aba {aba_id}. Pulando.")
                             continue
 
-                        # INVENTÁRIO DE CAMPOS (Passo 3)
+                        # INVENTÁRIO DE CAMPOS (Passo 3) & CONTRATO DE DADOS (Passo 5)
                         # Mapeamento fiel às colunas do Excel (A a I) e tipos de dados do VBA
-                        item = {
+                        raw_item = {
                             "col_a_contratacao": el_contratacao.text,
                             "col_b_descricao": self.driver.find_element(By.XPATH, f"{base_xpath}{f['descricao']}").text,
                             "col_c_categoria": self.driver.find_element(By.XPATH, f"{base_xpath}{f['categoria']}").text,
@@ -166,17 +167,19 @@ class PNCPScraperVBA:
                         }
                         
                         # Regra de Negócio Específica (VBA: If ... Value = "157/2024" Then ... = "157/2025")
-                        if item["col_i_dfd"] == "157/2024":
-                            item["col_i_dfd"] = "157/2025"
+                        if raw_item["col_i_dfd"] == "157/2024":
+                            raw_item["col_i_dfd"] = "157/2025"
                             
                         # Status específico para Pendentes (VBA: .Range("G" ...).Value = driver.FindElementByXPath(...).Text)
                         if aba_id == "pendentes":
                             try:
-                                item["col_g_status"] = self.driver.find_element(By.XPATH, f"{base_xpath}{f['status_pendente']}").text
+                                raw_item["col_g_status"] = self.driver.find_element(By.XPATH, f"{base_xpath}{f['status_pendente']}").text
                             except:
                                 pass # Mantém o status padrão se falhar
 
-                        self.data_collected.append(item)
+                        # Validação via Contrato de Dados (Passo 5)
+                        validated_item = PNCPItemSchema(**raw_item)
+                        self.data_collected.append(validated_item.dict())
                     except Exception as e:
                         # No VBA, erros individuais no loop geralmente não param a execução (On Error Resume Next implícito no fluxo)
                         logger.warning(f"Erro ao coletar item {i} na aba {aba_id}: {e}")
