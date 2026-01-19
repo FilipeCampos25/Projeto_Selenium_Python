@@ -1,19 +1,23 @@
-# Projeto Python - Adaptação do Sistema VBA de Coleta de Dados PGC
+# Projeto Python - Adaptação do Sistema VBA de Coleta de Dados PGC e PNCP
 
 ## 📋 Visão Geral
 
-Este projeto é uma adaptação em Python de um sistema legado em VBA (Visual Basic for Applications) para automação de coleta de dados do **PGC (Planejamento e Gerenciamento de Contratações)** do portal Comprasnet do governo brasileiro.
+Este projeto é uma adaptação em Python de um sistema legado em VBA (Visual Basic for Applications) para automação de coleta de dados dos portais governamentais brasileiros:
+
+- **PGC (Planejamento e Gerenciamento de Contratações)** - Portal Comprasnet
+- **PNCP (Portal Nacional de Contratações Públicas)** - Coleta de demandas em abas (reprovadas, aprovadas, pendentes)
 
 A adaptação mantém **fielmente a lógica de negócio** do sistema VBA original, mas implementada em Python moderno com arquitetura modular, tornando o código mais manutenível, testável e escalável.
 
 ## 🎯 Objetivos do Projeto
 
-- ✅ Replicar **exatamente** a lógica de coleta de dados do VBA
-- ✅ Manter a **mesma funcionalidade** de navegação e extração
+- ✅ Replicar **exatamente** a lógica de coleta de dados do VBA para PGC e PNCP
+- ✅ Manter a **mesma funcionalidade** de navegação e extração em ambos portais
 - ✅ Usar os **mesmos XPaths** e seletores do VBA
-- ✅ Implementar **todos os padrões de sincronização** (spinners, esperas)
+- ✅ Implementar **todos os padrões de sincronização** (spinners, esperas, timeouts)
 - ✅ Substituir saída Excel por **JSON/CSV/Banco de dados**
 - ✅ Criar código **modular e bem documentado**
+- ✅ Suportar coleta paralela de **PGC** e **PNCP** com configuração flexível
 
 ## 📁 Estrutura do Projeto
 
@@ -22,19 +26,32 @@ projeto_adaptado/
 ├── backend/
 │   └── app/
 │       ├── rpa/
-│       │   ├── pgc_scraper_vba_logic.py  ✅ Lógica principal replicada do VBA
-│       │   ├── pgc_xpaths.json           ✅ XPaths do VBA centralizados
-│       │   ├── waiter_vba.py             ✅ Funções de espera do VBA
-│       │   ├── driver_factory.py         ✅ Fábrica de drivers moderna
-│       │   ├── vba_compat.py             ✅ Compatibilidade VBA
-│       │   └── pncp_*.py                 (scrapers PNCP)
-│       ├── db/                           (banco de dados)
-│       ├── api/                          (API REST)
-│       └── services/                     (serviços)
+│       │   ├── pgc_scraper_vba_logic.py      ✅ Lógica PGC replicada do VBA
+│       │   ├── pgc_xpaths.json               ✅ XPaths PGC centralizados
+│       │   ├── pncp_scraper_vba_logic.py     ✅ Lógica PNCP replicada do VBA
+│       │   ├── pncp_xpaths.json              ✅ XPaths PNCP centralizados
+│       │   ├── waiter_vba.py                 ✅ Funções de espera do VBA
+│       │   ├── driver_factory.py             ✅ Fábrica de drivers moderna
+│       │   ├── vba_compat.py                 ✅ Compatibilidade VBA
+│       │   └── *.py                          ✅ Utilitários (OCR, downloader, etc)
+│       ├── db/                               (banco de dados PostgreSQL)
+│       ├── api/routers/
+│       │   ├── pncp.py                       🔗 Endpoints PNCP
+│       │   ├── pgc.py                        🔗 Endpoints PGC
+│       │   └── *.py                          🔗 Outros endpoints
+│       ├── services/
+│       │   ├── pncp_service.py               ⚙️ Orquestração PNCP
+│       │   ├── pgc_service.py                ⚙️ Orquestração PGC
+│       │   └── *.py                          ⚙️ Serviços auxiliares
+│       └── core/                             (camada base)
 ├── docs/
-│   ├── vba_analysis.md                   📊 Análise estrutural do VBA
-│   ├── vba_deep_analysis.md              📊 Análise profunda da lógica VBA
-│   └── gaps_and_mapping.md               📊 Mapeamento de gaps VBA→Python
+│   ├── architecture.md                   📊 Arquitetura geral
+│   ├── design_philosophy.md              📊 Filosofia de design
+│   ├── development.md                    📊 Guia de desenvolvimento
+│   ├── orchestration.md                  📊 Deploy e orquestração
+│   ├── pncp_implementation.md             📊 Implementação detalhada PNCP
+│   └── *.md                              📊 Outros documentos
+├── docker-compose.yml                    🐳 Stack Docker
 ├── MUDANCAS_VBA_TO_PYTHON.md             📖 Documentação técnica das mudanças
 ├── RELATORIO_ADAPTACAO_VBA_PYTHON.md     📖 Relatório executivo da adaptação
 ├── INSTRUCOES_DE_USO.md                  📖 Guia de uso do código adaptado
@@ -63,28 +80,31 @@ pip install -r requirements.txt
 ### Uso Básico
 
 ```bash
-# Executar coleta de dados
+# Executar coleta de dados PGC
 python3 -m backend.app.rpa.pgc_scraper_vba_logic <CPF> <SENHA> 2025
+
+# Executar coleta de dados PNCP
+python3 -m backend.app.rpa.pncp_scraper_vba_logic 2025
 ```
 
 ### Uso Programático
 
 ```python
+# Coleta PGC
 from backend.app.rpa.pgc_scraper_vba_logic import run_pgc_scraper_vba
+pgc_data = run_pgc_scraper_vba(ano_ref="2025")
+print(f"PGC: {len(pgc_data)} registros coletados")
 
-# Coletar dados (login manual via noVNC)
-data = run_pgc_scraper_vba(ano_ref="2025")
-
-# Processar resultados
-print(f"Total de registros: {len(data)}")
-for item in data:
-    print(f"DFD: {item['dfd']} | Valor: R$ {item['valor']:.2f}")
+# Coleta PNCP
+from backend.app.rpa.pncp_scraper_vba_logic import run_pncp_scraper_vba
+pncp_data = run_pncp_scraper_vba(ano_ref="2025")
+print(f"PNCP: {len(pncp_data)} itens coletados")
 ```
 
 ### Uso via API
 
 - **PGC**: POST `/api/pgc/iniciar` com `{"ano_ref": 2025}` (login manual via noVNC)
-- **PNCP**: POST `/api/pncp/iniciar` com `{"ano_ref": 2025, "max_pages": 200, "headless": false}` (login manual via noVNC)
+- **PNCP**: POST `/api/pncp/iniciar` com `{"ano_ref": 2025}` (login manual via noVNC)
 
 ## 📚 Documentação
 
@@ -93,13 +113,15 @@ for item in data:
 | **INSTRUCOES_DE_USO.md** | Guia completo de uso do código adaptado |
 | **MUDANCAS_VBA_TO_PYTHON.md** | Documentação técnica detalhada de todas as mudanças |
 | **RELATORIO_ADAPTACAO_VBA_PYTHON.md** | Relatório executivo da análise e adaptação |
-| **docs/vba_analysis.md** | Análise estrutural do código VBA (funções, padrões) |
-| **docs/vba_deep_analysis.md** | Análise profunda da lógica de execução do VBA |
-| **docs/gaps_and_mapping.md** | Mapeamento detalhado de gaps e diferenças |
+| **docs/architecture.md** | Arquitetura geral do sistema (PGC + PNCP) |
+| **docs/design_philosophy.md** | Filosofia de design e princípios |
+| **docs/development.md** | Guia de desenvolvimento e workflows |
+| **docs/orchestration.md** | Deploy, Docker e orquestração |
+| **docs/pncp_implementation.md** | Detalhes técnicos da implementação PNCP |
 
 ## 🔍 Principais Mudanças
 
-### 1. Fluxo de Login Completo
+### PGC - Fluxo de Login Completo
 
 **Antes (Python original):**
 - Login básico em 3 etapas
@@ -108,7 +130,7 @@ for item in data:
 - Login completo em **9 etapas** exatamente como o VBA
 - Inclui todas as esperas, scrolls e troca de janela
 
-### 2. Lógica de Paginação Correta
+### PGC - Lógica de Paginação Correta
 
 **Antes:**
 - Tentativa de iterar por `range(1000)` páginas
@@ -119,7 +141,27 @@ for item in data:
 - Itera clicando em cada botão de página específico
 - Aguarda confirmação de que está na página correta
 
-### 3. Extração de Tabela Precisa
+### PNCP - Coleta Multi-Aba Completa (NOVO)
+
+**Implementado:**
+- ✅ Suporte a 3 abas: **Reprovadas, Aprovadas, Pendentes**
+- ✅ Descoberta dinâmica de total de itens por aba
+- ✅ Rolagem inteligente e carregamento de todos os itens
+- ✅ Extração granular com tratamento de erro por item
+- ✅ Mapeamento preciso de colunas (9 campos por item)
+- ✅ Logs de auditoria fiéis ao VBA
+- ✅ Persistência automática em Postgres e Excel
+
+### PNCP - Tratamentos de Dados (NOVO)
+
+**Conversões VBA Emuladas:**
+- `CDbl()` para valores monetários
+- `CDate()` para datas em formato DD/MM/YYYY
+- `Format()` para formatação de DFD (XXX/XXXX)
+- `Left()` e `SoNumero()` para manipulação de strings
+- `On Error Resume Next` granular por campo
+
+### Extração de Tabela Precisa (PGC)
 
 **Antes:**
 - Índices de coluna genéricos (0, 1, 2, 3, 4)
@@ -129,7 +171,7 @@ for item in data:
 - Formatação de DFD com 8 dígitos
 - Conversão correta de valores monetários
 
-### 4. Leitura Detalhada de DFDs
+### Leitura Detalhada de DFDs (PGC)
 
 **Antes:**
 - Não implementado ou parcial
@@ -139,27 +181,33 @@ for item in data:
 - Extração de todos os campos (conclusão, editor, responsáveis)
 - Processamento de tabela interna de responsáveis
 
-### 5. XPaths Específicos
+### XPaths Específicos
 
 **Antes:**
 - XPaths genéricos (`//table`, `//button`)
 
 **Depois:**
 - XPaths específicos do VBA centralizados em JSON
-- Exemplo: `//body/app-root/ng-http-loader/div[@id='spinner']`
+- Exemplo PGC: `//body/app-root/ng-http-loader/div[@id='spinner']`
+- Exemplo PNCP: `//div[@aria-labelledby='reprovadas']//span[contains(text(), 'registros')]`
 
 ## 📊 Comparação VBA vs Python
 
 | Aspecto | VBA Original | Python Adaptado |
 |---------|--------------|-----------------|
-| **Linhas de código** | 9.900 (1 arquivo) | 2.622 + novos (14 arquivos) |
-| **Estrutura** | Monolítica | Modular |
-| **Login** | 9 etapas | 9 etapas ✅ |
-| **Paginação** | Descobre total primeiro | Descobre total primeiro ✅ |
+| **PGC - Linhas de código** | 9.900 (1 arquivo) | 2.622 (modular) |
+| **PNCP - Suporte** | ❌ Não | ✅ Completo |
+| **PGC - Login** | 9 etapas | 9 etapas ✅ |
+| **PGC - Paginação** | Descobre total primeiro | Descobre total primeiro ✅ |
+| **PNCP - Multi-aba** | ❌ Não | ✅ Reprovadas/Aprovadas/Pendentes |
+| **PNCP - Itens por aba** | ❌ Não | ✅ Com tratamento granular |
 | **XPaths** | Específicos | Específicos ✅ |
 | **Formatação DFD** | 8 dígitos | 8 dígitos ✅ |
-| **Sincronização** | 117 chamadas spinner | 117 chamadas spinner ✅ |
-| **Saída** | Excel | JSON/CSV/Banco ✅ |
+| **Sincronização** | 117 chamadas spinner | 117+ chamadas spinner ✅ |
+| **Saída** | Excel | JSON/CSV/Postgres ✅ |
+| **Arquitetura** | Monolítica | Modular ✅ |
+| **API REST** | ❌ Não | ✅ FastAPI |
+| **Persistência** | Excel | Postgres ✅ |
 
 ## 🛠️ Tecnologias Utilizadas
 
@@ -171,7 +219,7 @@ for item in data:
 
 ## 📦 Estrutura de Dados
 
-Cada registro coletado contém:
+### PGC - Cada registro coletado contém:
 
 ```python
 {
@@ -186,6 +234,22 @@ Cada registro coletado contém:
     "responsaveis": "Nome / Cargo\n...", # Responsáveis
     "pta": "",                          # PTA
     "justificativa": ""                 # Justificativa
+}
+```
+
+### PNCP - Cada item coletado contém:
+
+```python
+{
+    "col_a_contratacao": "ID-12345",    # Número da contratação
+    "col_b_descricao": "Descrição",     # Descrição do item
+    "col_c_categoria": "Categoria",     # Categoria
+    "col_d_valor": 50000.00,            # Valor (float)
+    "col_e_inicio": "2025-01-01",       # Data início (ISO)
+    "col_f_fim": "2025-12-31",          # Data fim (ISO)
+    "col_g_status": "APROVADA",         # Status atual
+    "col_h_status_tipo": "APROVADA",    # Tipo de status
+    "col_i_dfd": "157/2025"             # DFD formatado (XXX/YYYY)
 }
 ```
 
