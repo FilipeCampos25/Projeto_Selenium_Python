@@ -8,6 +8,7 @@ import time
 import logging
 import os
 import re
+from datetime import datetime
 from typing import Dict, List, Optional, Any
 from selenium.webdriver.remote.webdriver import WebDriver
 from selenium.webdriver.common.by import By
@@ -72,9 +73,6 @@ class PNCPScraperVBA:
         # 7. Dá um tempo (Application.Wait Now + TimeValue("00:00:01"))
         time.sleep(1)
 
-        # 8. Inicia contador de linhas (lin = 2 no VBA)
-        # No Python, apenas coletamos para uma lista.
-
         # --- SEÇÃO REPROVADAS ---
         self._coletar_aba("reprovadas", "REPROVADA")
 
@@ -97,7 +95,6 @@ class PNCPScraperVBA:
         self.compat.testa_spinner()
 
         # Testa se não encontrou nada
-        # No VBA, ele testa se o elemento de "nada encontrado" NÃO está presente
         xpath_vazio = f"//div[@aria-labelledby='{aba_id}']/div[@class='search-results']/div/div/div/div/div[2]/span"
         try:
             # Se o elemento de "nada encontrado" NÃO estiver presente, prossegue
@@ -144,25 +141,26 @@ class PNCPScraperVBA:
                         base_xpath = XPATHS["table"]["item_base_template"].replace("{aba_id}", aba_id).replace("{index}", str(i))
                         f = XPATHS["fields"]
                         
+                        # Mapeamento fiel às colunas do Excel (A a I) no VBA
                         item = {
-                            "contratacao": self.driver.find_element(By.XPATH, f"{base_xpath}{f['contratacao']}").text,
-                            "descricao": self.driver.find_element(By.XPATH, f"{base_xpath}{f['descricao']}").text,
-                            "categoria": self.driver.find_element(By.XPATH, f"{base_xpath}{f['categoria']}").text,
-                            "valor": self._parse_vba_cdbl(self.driver.find_element(By.XPATH, f"{base_xpath}{f['valor']}").text),
-                            "inicio": self.driver.find_element(By.XPATH, f"{base_xpath}{f['inicio']}").text,
-                            "fim": self.driver.find_element(By.XPATH, f"{base_xpath}{f['fim']}").text,
-                            "status": status_vba,
-                            "status_tipo": status_vba,
-                            "dfd": self._format_dfd(self.driver.find_element(By.XPATH, f"{base_xpath}{f['descricao']}").text)
+                            "col_a_contratacao": self.driver.find_element(By.XPATH, f"{base_xpath}{f['contratacao']}").text,
+                            "col_b_descricao": self.driver.find_element(By.XPATH, f"{base_xpath}{f['descricao']}").text,
+                            "col_c_categoria": self.driver.find_element(By.XPATH, f"{base_xpath}{f['categoria']}").text,
+                            "col_d_valor": self._parse_vba_cdbl(self.driver.find_element(By.XPATH, f"{base_xpath}{f['valor']}").text),
+                            "col_e_inicio": self._parse_vba_cdate(self.driver.find_element(By.XPATH, f"{base_xpath}{f['inicio']}").text),
+                            "col_f_fim": self._parse_vba_cdate(self.driver.find_element(By.XPATH, f"{base_xpath}{f['fim']}").text),
+                            "col_g_status": status_vba,
+                            "col_h_status_tipo": status_vba,
+                            "col_i_dfd": self._format_dfd(self.driver.find_element(By.XPATH, f"{base_xpath}{f['descricao']}").text)
                         }
                         
-                        # Correção de erro temporário do VBA (Linha 2461)
-                        if item["dfd"] == "157/2024":
-                            item["dfd"] = "157/2025"
+                        # Correção de erro temporário do VBA (Linha 2381/2497/2614)
+                        if item["col_i_dfd"] == "157/2024":
+                            item["col_i_dfd"] = "157/2025"
                             
                         # Status específico para Pendentes (Linha 2629)
                         if aba_id == "pendentes":
-                            item["status"] = self.driver.find_element(By.XPATH, f"{base_xpath}{f['status_pendente']}").text
+                            item["col_g_status"] = self.driver.find_element(By.XPATH, f"{base_xpath}{f['status_pendente']}").text
 
                         self.data_collected.append(item)
                     except Exception as e:
@@ -176,11 +174,21 @@ class PNCPScraperVBA:
         if not text or text.strip() == "":
             return 0.0
         try:
-            # Remove R$, pontos de milhar e troca vírgula por ponto
             clean = text.replace("R$", "").replace(".", "").replace(",", ".").strip()
             return float(clean)
         except:
             return 0.0
+
+    def _parse_vba_cdate(self, text: str) -> str:
+        """Emula CDate do VBA, retornando string formatada ISO para o DB."""
+        if not text or text.strip() == "":
+            return None
+        try:
+            # Assume formato DD/MM/YYYY
+            dt = datetime.strptime(text.strip(), "%d/%m/%Y")
+            return dt.strftime("%Y-%m-%d")
+        except:
+            return text
 
     def _format_dfd(self, text: str) -> str:
         """Emula Format(Left(SoNumero(...), 7), "@@@\/@@@@") do VBA."""
@@ -193,14 +201,9 @@ class PNCPScraperVBA:
 def run_pncp_scraper_vba(ano_ref: str = "2025") -> List[Dict[str, Any]]:
     """Entrypoint para o scraper PNCP com lógica VBA."""
     from .driver_factory import create_driver
-    # Usa headless=False para permitir login manual via noVNC se necessário, 
-    # embora o PNCP no VBA pareça herdar o login do PGC.
     driver = create_driver(headless=False)
     try:
         scraper = PNCPScraperVBA(driver, ano_ref)
-        # O VBA chama A_Loga_Acessa_PGC antes de Dados_PNCP
-        # Vamos assumir que o login já foi feito ou será feito.
-        # Para manter a estrutura do PGC, vamos usar a mesma abordagem.
         from .pgc_scraper_vba_logic import PGCScraperVBA
         pgc_login = PGCScraperVBA(driver, ano_ref)
         if pgc_login.A_Loga_Acessa_PGC():
