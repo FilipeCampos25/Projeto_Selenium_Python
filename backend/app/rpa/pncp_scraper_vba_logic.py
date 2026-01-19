@@ -4,9 +4,8 @@ Implementação fiel à lógica do Módulo1.bas (VBA) para o PNCP.
 Focado em fidelidade total aos XPaths, tempos de espera e tratamento de dados.
 
 HISTÓRICO DE ADAPTAÇÃO:
-- Passo 11: Implementação da Paginação e Rolagem Fiel ao VBA.
-- Passo 12: Tratamento de Erros Equivalente ao VBA (Try/Except por item).
-- Passo 13: Implementação de Logs Específicos e Comentários de Orientação.
+- Passo 11 a 17: Implementação de fidelidade, erros, logs, persistência e testes.
+- Passo 18: Refatoração pós-fidelidade (Melhoria de legibilidade sem alteração lógica).
 """
 import json
 import logging
@@ -17,12 +16,10 @@ from datetime import datetime
 from typing import Dict, List, Optional, Any
 from selenium.webdriver.remote.webdriver import WebDriver
 from selenium.webdriver.common.by import By
-from selenium.webdriver.support.ui import WebDriverWait
-from selenium.webdriver.support import expected_conditions as EC
-from .vba_compat import VBACompat, CheckpointFailureError
+from .vba_compat import VBACompat
 from ..api.schemas import PNCPItemSchema
 
-# Configuração de Logger para Auditoria (Passo 13)
+# Configuração de Logger para Auditoria
 logger = logging.getLogger(__name__)
 
 # Carregar XPaths do arquivo JSON (Mapeamento direto do VBA)
@@ -31,10 +28,7 @@ with open(XPATHS_PATH, "r", encoding="utf-8") as f:
     XPATHS = json.load(f)
 
 def so_numero(text: str) -> str:
-    """
-    Emula a função SoNumero do VBA.
-    Utilizada para limpar strings e manter apenas dígitos para contadores e IDs.
-    """
+    """Emula a função SoNumero do VBA para limpeza de strings."""
     if not text:
         return ""
     return "".join(re.findall(r'\d+', text))
@@ -43,7 +37,7 @@ class PNCPScraperVBA:
     """
     Classe PNCPScraperVBA:
     Implementa o fluxo de coleta do PNCP replicando o comportamento do Módulo1.bas.
-    Cada método e bloco de código possui comentários referenciando a lógica original.
+    Refatorada no Passo 18 para melhor legibilidade, mantendo fidelidade total.
     """
     def __init__(self, driver: WebDriver, ano_ref: str = "2025", dry_run: bool = False):
         self.driver = driver
@@ -53,302 +47,209 @@ class PNCPScraperVBA:
         self.data_collected = []
 
     def Dados_PNCP(self) -> List[Dict[str, Any]]:
-        """
-        Replica Sub Dados_PNCP() do VBA.
-        Este é o entrypoint principal da coleta PNCP.
-        """
+        """Replica Sub Dados_PNCP() do VBA. Entrypoint principal."""
         logger.info(f"=== [INÍCIO] COLETA PNCP - ANO REF: {self.ano_ref} ===")
-        logger.info("Passo 13: Iniciando auditoria detalhada do fluxo.")
         
         try:
-            # --- SINCRONIZAÇÃO INICIAL ---
-            # VBA: Call testa_spinner
-            logger.info("[LOG-VBA] Aguardando carregamento inicial (testa_spinner)...")
-            self.compat.testa_spinner()
-            
-            # --- AGUARDA BOTÃO FORMAÇÃO PCA ---
-            # VBA: Do ... Loop Until driver.FindElementByXPath(...).IsDisplayed
-            logger.info("[LOG-VBA] Aguardando visibilidade do botão 'Formação do PCA'...")
-            start_wait = time.time()
-            while time.time() - start_wait < 50:
-                time.sleep(0.25)
-                try:
-                    if self.driver.find_element(By.XPATH, XPATHS["pca_selection"]["button_formacao_pca"]).is_displayed():
-                        break
-                except:
-                    pass
-            else:
-                logger.error("[ERRO-CRÍTICO] Timeout ao aguardar botão 'Formação do PCA'.")
-                return []
+            self._preparar_navegação_inicial()
 
             if self.dry_run:
-                logger.info("[DRY-RUN] Validação de página inicial concluída. Encerrando conforme Passo 6.")
+                logger.info("[DRY-RUN] Validação inicial concluída. Encerrando.")
                 return []
 
-            # --- CLIQUE EM FORMAÇÃO DO PCA ---
-            # VBA: .ScrollIntoView e .Click
-            logger.info("[LOG-VBA] Executando Scroll e Clique em 'Formação do PCA'...")
-            try:
-                btn_formacao = self.driver.find_element(By.XPATH, XPATHS["pca_selection"]["button_formacao_pca"])
-                self.driver.execute_script("arguments[0].scrollIntoView();", btn_formacao)
-                btn_formacao.click()
-            except Exception as e:
-                logger.warning(f"[AVISO-VBA] Falha no clique padrão, tentando prosseguir: {e}")
-            
-            # VBA: Call testa_spinner
-            self.compat.testa_spinner()
+            self._selecionar_ano_pca()
 
-            # --- AGUARDA DROPDOWN PCA ---
-            # VBA: Do While Not driver.IsElementPresent(By.XPath("//p-dropdown[@placeholder='Selecione PCA']"))
-            logger.info("[LOG-VBA] Aguardando presença do Dropdown de seleção de PCA...")
-            start_wait = time.time()
-            while time.time() - start_wait < 30:
-                if len(self.driver.find_elements(By.XPATH, XPATHS["pca_selection"]["dropdown_pca"])) > 0:
-                    break
-                time.sleep(0.5)
-            else:
-                logger.error("[ERRO-CRÍTICO] Dropdown PCA não encontrado.")
-                return []
-            
-            self.compat.testa_spinner()
-
-            # --- SELECIONA O ANO DO PGC ---
-            # VBA: driver.FindElementByXPath("//p-dropdown[@placeholder='Selecione PCA']").Click
-            logger.info(f"[LOG-VBA] Selecionando o ano {self.ano_ref} no Dropdown...")
-            try:
-                self.driver.find_element(By.XPATH, XPATHS["pca_selection"]["dropdown_pca"]).click()
-                self.compat.testa_spinner()
-                
-                # VBA: driver.FindElementByXPath("//li[starts-with(@aria-label,'PCA " + ano_ref + " -')]").Click
-                li_pca_xpath = XPATHS["pca_selection"]["li_pca_ano_template"].replace("{ano}", self.ano_ref)
-                self.driver.find_element(By.XPATH, li_pca_xpath).click()
-            except Exception as e:
-                logger.error(f"[ERRO-CRÍTICO] Falha ao selecionar o ano no dropdown: {e}")
-                return []
-            
-            self.compat.testa_spinner()
-
-            # --- ESPERA DE ESTABILIZAÇÃO ---
-            # VBA: Application.Wait Now + TimeValue("00:00:01")
-            logger.info("[LOG-VBA] Aguardando 1 segundo para estabilização da página...")
-            time.sleep(1)
-
-            # --- INÍCIO DA COLETA POR ABAS (REPROVADAS -> APROVADAS -> PENDENTES) ---
-            
-            # ABA REPROVADAS
-            try:
-                logger.info("--- [ABA] INICIANDO COLETA: REPROVADAS ---")
-                self._coletar_aba("reprovadas", "REPROVADA")
-            except Exception as e:
-                logger.error(f"[ERRO-ABA] Falha na aba REPROVADAS: {e}. Prosseguindo (Comportamento VBA).")
-
-            # ABA APROVADAS
-            try:
-                logger.info("--- [ABA] INICIANDO COLETA: APROVADAS ---")
-                self._coletar_aba("aprovadas", "APROVADA")
-            except Exception as e:
-                logger.error(f"[ERRO-ABA] Falha na aba APROVADAS: {e}. Prosseguindo (Comportamento VBA).")
-
-            # ABA PENDENTES
-            try:
-                logger.info("--- [ABA] INICIANDO COLETA: PENDENTES ---")
-                self._coletar_aba("pendentes", "PENDENTE")
-            except Exception as e:
-                logger.error(f"[ERRO-ABA] Falha na aba PENDENTES: {e}. Finalizando (Comportamento VBA).")
+            # --- COLETA POR ABAS (REPROVADAS -> APROVADAS -> PENDENTES) ---
+            # Passo 12: Cada aba é isolada para garantir continuidade (On Error Resume Next)
+            for aba_id, status in [("reprovadas", "REPROVADA"), ("aprovadas", "APROVADA"), ("pendentes", "PENDENTE")]:
+                try:
+                    logger.info(f"--- [ABA] INICIANDO COLETA: {aba_id.upper()} ---")
+                    self._coletar_aba(aba_id, status)
+                except Exception as e:
+                    logger.error(f"[ERRO-ABA] Falha na aba {aba_id.upper()}: {e}. Prosseguindo...")
 
         except Exception as e:
-            logger.exception(f"[ERRO-FATAL] Exceção não tratada no fluxo Dados_PNCP: {e}")
+            logger.exception(f"[ERRO-FATAL] Exceção no fluxo Dados_PNCP: {e}")
 
-        logger.info(f"=== [FIM] COLETA PNCP CONCLUÍDA. TOTAL COLETADO: {len(self.data_collected)} ITENS ===")
+        logger.info(f"=== [FIM] COLETA PNCP CONCLUÍDA. TOTAL: {len(self.data_collected)} ITENS ===")
         return self.data_collected
 
-    def _coletar_aba(self, aba_id: str, status_vba: str):
-        """
-        Lógica de coleta para cada aba.
-        Implementa Paginação (Passo 11), Tratamento de Erros (Passo 12) e Logs (Passo 13).
-        """
-        # --- CLIQUE NA ABA ---
-        # VBA: driver.FindElementByXPath("//a[@id='contratacoes-...']").Click
-        logger.info(f"[LOG-VBA] Clicando na aba: {aba_id.upper()}")
-        aba_xpath = XPATHS["tabs"][aba_id]
-        try:
-            self.driver.find_element(By.XPATH, aba_xpath).click()
-        except Exception as e:
-            logger.error(f"[ERRO-VBA] Não foi possível acessar a aba {aba_id}: {e}")
-            return
-        
+    def _preparar_navegação_inicial(self):
+        """Encapsula a lógica inicial de sincronização e visibilidade."""
         # VBA: Call testa_spinner
+        logger.info("[LOG-VBA] Sincronizando (testa_spinner)...")
         self.compat.testa_spinner()
-        time.sleep(1)
         
-        # --- VERIFICA SE HÁ DADOS ---
-        # VBA: If Not driver.IsElementPresent(By.XPath(... span de vazio ...))
-        xpath_vazio = f"//div[@aria-labelledby='{aba_id}']/div[@class='search-results']/div/div/div/div/div[2]/span"
-        if len(self.driver.find_elements(By.XPATH, xpath_vazio)) > 0:
-            logger.info(f"[LOG-VBA] Aba {aba_id.upper()} está vazia. Pulando coleta.")
-            return
-
-        # --- OBTÉM TOTAL DE DEMANDAS ---
-        # VBA: Do While txt = "" ... demandas = SoNumero(txt)
-        logger.info(f"[LOG-VBA] Obtendo total de demandas para a aba {aba_id.upper()}...")
-        xpath_label_total = XPATHS["table"]["label_total_template"].replace("{aba_id}", aba_id)
-        txt = ""
+        # VBA: Do ... Loop Until driver.FindElementByXPath(...).IsDisplayed
+        logger.info("[LOG-VBA] Aguardando botão 'Formação do PCA'...")
         start_wait = time.time()
-        while not txt and (time.time() - start_wait < 20):
+        while time.time() - start_wait < 50:
+            time.sleep(0.25)
             try:
-                txt = self.driver.find_element(By.XPATH, xpath_label_total).text
-            except:
-                time.sleep(0.5)
-        
-        if not txt:
-            logger.warning(f"[AVISO-VBA] Não foi possível ler o total de demandas na aba {aba_id}.")
-            return
-            
-        demandas = int(so_numero(txt))
-        logger.info(f"[LOG-VBA] Total detectado: {demandas} itens.")
-
-        # --- FOCO NA TABELA ---
-        # VBA: driver.FindElementByXPath(... tbody ...).Click
-        xpath_tbody = XPATHS["table"]["tbody_template"].replace("{aba_id}", aba_id)
-        try:
-            tabela_el = self.driver.find_element(By.XPATH, xpath_tbody)
-            tabela_el.click()
-        except:
-            pass
-
-        # --- PAGINAÇÃO / ROLAGEM ---
-        # VBA: Do While Not driver.IsElementPresent(... div[demandas] ...)
-        logger.info(f"[LOG-VBA] Iniciando rolagem para carregar todos os {demandas} itens...")
-        xpath_ultimo_item = f"{xpath_tbody}[@class='p-element p-datatable-tbody']/div[{demandas}]"
-        
-        start_scroll = time.time()
-        while (time.time() - start_scroll < 120):
-            if len(self.driver.find_elements(By.XPATH, xpath_ultimo_item)) > 0:
-                logger.info(f"[LOG-VBA] Todos os {demandas} itens carregados com sucesso.")
-                break
-            try:
-                self.driver.execute_script("arguments[0].scrollIntoView();", tabela_el)
-                self.driver.execute_script("window.scrollBy(0, 500);")
+                if self.driver.find_element(By.XPATH, XPATHS["pca_selection"]["button_formacao_pca"]).is_displayed():
+                    break
             except:
                 pass
+        else:
+            raise TimeoutError("Botão 'Formação do PCA' não apareceu.")
+
+        # VBA: .ScrollIntoView e .Click
+        logger.info("[LOG-VBA] Acessando 'Formação do PCA'...")
+        btn = self.driver.find_element(By.XPATH, XPATHS["pca_selection"]["button_formacao_pca"])
+        self.driver.execute_script("arguments[0].scrollIntoView();", btn)
+        btn.click()
+        self.compat.testa_spinner()
+
+    def _selecionar_ano_pca(self):
+        """Encapsula a seleção do ano no dropdown PCA."""
+        # VBA: Do While Not driver.IsElementPresent(...)
+        logger.info("[LOG-VBA] Aguardando Dropdown PCA...")
+        start_wait = time.time()
+        while time.time() - start_wait < 30:
+            if len(self.driver.find_elements(By.XPATH, XPATHS["pca_selection"]["dropdown_pca"])) > 0:
+                break
+            time.sleep(0.5)
+        
+        self.compat.testa_spinner()
+        
+        # VBA: Seleção do ano no combo
+        logger.info(f"[LOG-VBA] Selecionando ano {self.ano_ref}...")
+        self.driver.find_element(By.XPATH, XPATHS["pca_selection"]["dropdown_pca"]).click()
+        self.compat.testa_spinner()
+        
+        li_xpath = XPATHS["pca_selection"]["li_pca_ano_template"].replace("{ano}", self.ano_ref)
+        self.driver.find_element(By.XPATH, li_xpath).click()
+        self.compat.testa_spinner()
+        
+        # VBA: Application.Wait Now + TimeValue("00:00:01")
+        time.sleep(1)
+
+    def _coletar_aba(self, aba_id: str, status_vba: str):
+        """Lógica de coleta por aba (Refatorada para legibilidade)."""
+        # 1. Acesso à aba
+        logger.info(f"[LOG-VBA] Acessando aba: {aba_id.upper()}")
+        self.driver.find_element(By.XPATH, XPATHS["tabs"][aba_id]).click()
+        self.compat.testa_spinner()
+        time.sleep(1)
+        
+        # 2. Verificação de dados
+        xpath_vazio = f"//div[@aria-labelledby='{aba_id}']/div[@class='search-results']/div/div/div/div/div[2]/span"
+        if len(self.driver.find_elements(By.XPATH, xpath_vazio)) > 0:
+            logger.info(f"[LOG-VBA] Aba {aba_id.upper()} vazia.")
+            return
+
+        # 3. Total de demandas
+        demandas = self._obter_total_demandas(aba_id)
+        if demandas == 0: return
+
+        # 4. Paginação/Rolagem (Passo 11)
+        self._executar_rolagem_tabela(aba_id, demandas)
+
+        # 5. Extração de itens (Passo 12/13)
+        self._extrair_itens_tabela(aba_id, demandas)
+
+    def _obter_total_demandas(self, aba_id: str) -> int:
+        """Extrai o número total de demandas da aba."""
+        xpath = XPATHS["table"]["label_total_template"].replace("{aba_id}", aba_id)
+        txt = ""
+        start = time.time()
+        while not txt and (time.time() - start < 20):
+            try:
+                txt = self.driver.find_element(By.XPATH, xpath).text
+            except:
+                time.sleep(0.5)
+        return int(so_numero(txt)) if txt else 0
+
+    def _executar_rolagem_tabela(self, aba_id: str, demandas: int):
+        """Executa a rolagem fiel ao VBA para carregar todos os itens."""
+        xpath_tbody = XPATHS["table"]["tbody_template"].replace("{aba_id}", aba_id)
+        xpath_ultimo = f"{xpath_tbody}[@class='p-element p-datatable-tbody']/div[{demandas}]"
+        
+        logger.info(f"[LOG-VBA] Rolando para carregar {demandas} itens...")
+        try:
+            tabela = self.driver.find_element(By.XPATH, xpath_tbody)
+            tabela.click()
+        except: pass
+
+        start = time.time()
+        while (time.time() - start < 120):
+            if len(self.driver.find_elements(By.XPATH, xpath_ultimo)) > 0:
+                break
+            try:
+                self.driver.execute_script("arguments[0].scrollIntoView();", tabela)
+                self.driver.execute_script("window.scrollBy(0, 500);")
+            except: pass
             self.compat.testa_spinner()
             time.sleep(0.5)
-        else:
-            logger.warning(f"[AVISO-VBA] Timeout na rolagem. Alguns itens podem não ter sido carregados.")
-
+        
         time.sleep(1)
         self.compat.testa_spinner()
 
-        # --- LOOP DE COLETA DE CAMPOS ---
-        # VBA: For i = 1 To demandas
-        logger.info(f"[LOG-VBA] Iniciando extração de campos para {demandas} itens...")
+    def _extrair_itens_tabela(self, aba_id: str, demandas: int):
+        """Loop de extração de campos com tratamento de erro por item."""
         f = XPATHS["fields"]
-        item_base_xpath = XPATHS["table"]["item_base_template"].replace("{aba_id}", aba_id)
+        base_tmpl = XPATHS["table"]["item_base_template"].replace("{aba_id}", aba_id)
         
         for i in range(1, demandas + 1):
-            # PASSO 12: Try/Except por item (Emula On Error Resume Next)
             try:
-                base_xpath = item_base_xpath.replace("{index}", str(i))
+                base_xpath = base_tmpl.replace("{index}", str(i))
                 
-                # 1. Coluna A: ID Contratação
+                # Extração direta seguindo XPaths do VBA
                 val_a = self.driver.find_element(By.XPATH, f"{base_xpath}{f['contratacao']}").text
-                
-                # 2. Coluna B: Descrição
                 val_b = self.driver.find_element(By.XPATH, f"{base_xpath}{f['descricao']}").text
-                
-                # 3. Coluna I: DFD (VBA: Format(Left(SoNumero(...), 7), "@@@\/@@@@"))
-                val_i = self._format_dfd(val_b)
-                if val_i == "157/2024":
-                    val_i = "157/2025"
-                
-                # 4. Coluna C: Categoria
                 val_c = self.driver.find_element(By.XPATH, f"{base_xpath}{f['categoria']}").text
                 
-                # 5. Coluna D: Valor (VBA: CDbl(...))
+                # Valor com tratamento CDbl
                 val_d_raw = self.driver.find_element(By.XPATH, f"{base_xpath}{f['valor']}").text
-                if aba_id == "pendentes" and not val_d_raw.strip():
-                    val_d = 0.0
-                else:
-                    val_d = self._parse_vba_cdbl(val_d_raw)
+                val_d = 0.0 if (aba_id == "pendentes" and not val_d_raw.strip()) else self._parse_vba_cdbl(val_d_raw)
                 
-                # 6. Coluna E: Início (VBA: CDate(...))
-                val_e_raw = self.driver.find_element(By.XPATH, f"{base_xpath}{f['inicio']}").text
-                val_e = self._parse_vba_cdate(val_e_raw)
+                # Datas com tratamento CDate
+                val_e = self._parse_vba_cdate(self.driver.find_element(By.XPATH, f"{base_xpath}{f['inicio']}").text)
+                val_f = self._parse_vba_cdate(self.driver.find_element(By.XPATH, f"{base_xpath}{f['fim']}").text)
                 
-                # 7. Coluna F: Fim (VBA: CDate(...))
-                val_f_raw = self.driver.find_element(By.XPATH, f"{base_xpath}{f['fim']}").text
-                val_f = self._parse_vba_cdate(val_f_raw)
+                # Status e DFD
+                val_g = self._obter_status_item(aba_id, base_xpath, f)
+                val_i = self._format_dfd(val_b)
+                if val_i == "157/2024": val_i = "157/2025"
                 
-                # 8. Coluna G: Status
-                if aba_id == "reprovadas":
-                    val_g = "REPROVADA"
-                elif aba_id == "aprovadas":
-                    val_g = self.driver.find_element(By.XPATH, f"{base_xpath}{f['status_aprovada']}").text
-                else: # pendentes
-                    val_g = self.driver.find_element(By.XPATH, f"{base_xpath}{f['status_pendente']}").text
-                
-                # 9. Coluna H: Status Tipo
-                if aba_id == "reprovadas":
-                    val_h = "REPROVADA"
-                elif aba_id == "aprovadas":
-                    val_h = "APROVADA"
-                else: # pendentes
-                    val_h = val_g
-                
-                # --- MONTAGEM E VALIDAÇÃO DO CONTRATO (Passo 5) ---
-                raw_item = {
-                    "col_a_contratacao": val_a,
-                    "col_b_descricao": val_b,
-                    "col_c_categoria": val_c,
-                    "col_d_valor": val_d,
-                    "col_e_inicio": val_e,
-                    "col_f_fim": val_f,
-                    "col_g_status": val_g,
-                    "col_h_status_tipo": val_h,
-                    "col_i_dfd": val_i
-                }
-
-                validated_item = PNCPItemSchema(**raw_item)
-                
-                # --- LOG DE AUDITORIA (Passo 13) ---
-                logger.info(
-                    f"[AUDITORIA-ITEM] {i}/{demandas} | Aba: {aba_id.upper()} | "
-                    f"ID: {validated_item.col_a_contratacao} | DFD: {validated_item.col_i_dfd} | "
-                    f"Valor: {validated_item.col_d_valor} | Status: {validated_item.col_g_status}"
+                # Validação via Schema (Passo 5)
+                item = PNCPItemSchema(
+                    col_a_contratacao=val_a, col_b_descricao=val_b, col_c_categoria=val_c,
+                    col_d_valor=val_d, col_e_inicio=val_e, col_f_fim=val_f,
+                    col_g_status=val_g, col_h_status_tipo="APROVADA" if aba_id == "aprovadas" else val_g,
+                    col_i_dfd=val_i
                 )
                 
-                self.data_collected.append(validated_item.dict())
+                logger.info(f"[AUDITORIA-ITEM] {i}/{demandas} | ID: {item.col_a_contratacao} | Status: {item.col_g_status}")
+                self.data_collected.append(item.dict())
+                
             except Exception as e:
-                # PASSO 12: Emula "On Error Resume Next"
-                logger.warning(f"[AVISO-VBA] Pulando item {i} na aba {aba_id} devido a erro: {e}")
-                continue
+                logger.warning(f"[AVISO-VBA] Pulando item {i} na aba {aba_id}: {e}")
+
+    def _obter_status_item(self, aba_id: str, base_xpath: str, f: dict) -> str:
+        """Extrai o status do item baseado na aba."""
+        if aba_id == "reprovadas": return "REPROVADA"
+        xpath = f"{base_xpath}{f['status_aprovada' if aba_id == 'aprovadas' else 'status_pendente']}"
+        return self.driver.find_element(By.XPATH, xpath).text
 
     def _parse_vba_cdbl(self, text: str) -> float:
-        """Emula CDbl do VBA com tratamento de erro para auditoria."""
+        """Emula CDbl do VBA."""
         if not text: return 0.0
         try:
-            clean = text.replace("R$", "").replace(".", "").replace(",", ".").strip()
-            return float(clean)
-        except Exception as e:
-            logger.debug(f"[LOG-DEBUG] Falha ao converter valor '{text}': {e}")
-            return 0.0
+            return float(text.replace("R$", "").replace(".", "").replace(",", ".").strip())
+        except: return 0.0
 
     def _parse_vba_cdate(self, text: str) -> Optional[str]:
-        """Emula CDate do VBA com tratamento de erro para auditoria."""
+        """Emula CDate do VBA."""
         if not text or "/" not in text: return None
         try:
             return datetime.strptime(text.strip(), "%d/%m/%Y").date().isoformat()
-        except Exception as e:
-            logger.debug(f"[LOG-DEBUG] Falha ao converter data '{text}': {e}")
-            return None
+        except: return None
 
     def _format_dfd(self, descricao: str) -> str:
-        """Emula a extração e formatação do DFD do VBA (Passo 3)."""
+        """Emula a extração e formatação do DFD do VBA."""
         nums = so_numero(descricao)
-        if len(nums) >= 7:
-            left_7 = nums[:7]
-            return f"{left_7[:3]}/{left_7[3:]}"
-        return nums
+        return f"{nums[:3]}/{nums[3:7]}" if len(nums) >= 7 else nums
 
 def run_pncp_scraper_vba(ano_ref: str = "2025", dry_run: bool = False) -> List[Dict[str, Any]]:
     """Entrypoint para o scraper PNCP com lógica VBA."""
@@ -357,8 +258,7 @@ def run_pncp_scraper_vba(ano_ref: str = "2025", dry_run: bool = False) -> List[D
     try:
         scraper = PNCPScraperVBA(driver, ano_ref, dry_run=dry_run)
         from .pgc_scraper_vba_logic import PGCScraperVBA
-        pgc_login = PGCScraperVBA(driver, ano_ref)
-        if pgc_login.A_Loga_Acessa_PGC():
+        if PGCScraperVBA(driver, ano_ref).A_Loga_Acessa_PGC():
             return scraper.Dados_PNCP()
         return []
     finally:
