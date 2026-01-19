@@ -16,45 +16,30 @@ router = APIRouter(prefix="/api/pncp", tags=["pncp"])
 
 class PNCPRequest(BaseModel):
     ano_ref: int
-    #username: str = "59494964691"
-    #password: str = "01etpdigital"
-    # use_mock agora é opcional. Se não enviado, segue a Feature Flag global.
-    use_mock: Optional[bool] = None 
+    # username e password são tratados internamente ou via login manual no VNC
 
 @router.post("/iniciar")
 async def iniciar_coleta(request: PNCPRequest, background_tasks: BackgroundTasks):
     """
     Inicia a coleta do PNCP seguindo a lógica fiel ao VBA.
-    Respeita a Feature Flag FEATURE_PNCP_REAL (Passo 16).
+    Passo 1.1: Mock desativado definitivamente.
     """
     try:
-        # Verifica o estado atual da Feature Flag para informar na resposta
-        real_enabled = is_pncp_real_enabled()
-        
-        logger.info(
-            f"Recebida requisição PNCP {request.ano_ref} | "
-            f"Override Mock: {request.use_mock} | "
-            f"Feature Flag Real: {real_enabled}"
-        )
+        logger.info(f"Recebida requisição PNCP Real para o ano {request.ano_ref}")
         
         # Executa em background
         background_tasks.add_task(
             coleta_pncp,
-            request.username,
-            request.password,
-            str(request.ano_ref),
-            use_mock=request.use_mock
+            "", # username (login manual)
+            "", # password (login manual)
+            str(request.ano_ref)
         )
-        
-        # Determina o modo que será usado para informar o usuário
-        modo_final = "MOCK" if (request.use_mock is True or (request.use_mock is None and not real_enabled)) else "REAL"
         
         return {
             "status": "started",
             "ano_ref": request.ano_ref,
-            "modo_execucao": modo_final,
-            "feature_flag_real": real_enabled,
-            "message": f"Coleta PNCP iniciada no modo {modo_final}. Acompanhe pelo VNC em http://localhost:7900"
+            "modo_execucao": "REAL",
+            "message": f"Coleta PNCP REAL iniciada para o ano {request.ano_ref}. Acompanhe pelo VNC em http://localhost:7900"
         }
     except Exception as e:
         logger.error(f"Erro ao iniciar coleta PNCP: {e}")

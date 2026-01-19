@@ -117,9 +117,15 @@ class PNCPScraperRefactored(BasePortalScraper):
             headless=headless,
             remote_url=remote_url
         )
+        
+        # Passo 1.2: Bloquear execução se Selenium não estiver ativo
+        if not self.driver:
+            logger.error("[ERRO-PASSO-1.2] Falha crítica: Driver Selenium não inicializado.")
+            raise ScraperError("Falha ao iniciar o driver Selenium. Execução bloqueada conforme checklist 1.2.")
+
         self.ano_referencia: Optional[str] = None
         self.repo = ColetasRepository()
-        logger.info("PNCPScraperRefactored inicializado")
+        logger.info("PNCPScraperRefactored inicializado com sucesso (Modo Real)")
 
     # -------------------------------------------------------------------------
     # ENTRYPOINT
@@ -131,12 +137,16 @@ class PNCPScraperRefactored(BasePortalScraper):
         """
         """
         Wrapper para compatibilidade com BasePortalScraper.
-        Garante fechamento do driver.
+        Garante fechamento do driver (Passo 5.2).
         """
         try:
+            # O driver é mantido aberto durante todo o processo de abas (Reprovadas, Aprovadas, Pendentes)
+            # A lógica de fechamento é centralizada aqui no final da execução total.
             return self.run_collection(ano_ref=ano_ref, max_pages=max_pages, output_path=output_path)
         finally:
             try:
+                # VBA: FechaBrowser (Chamado apenas no final de tudo)
+                logger.info("[LOG-VBA] Finalizando sessão do browser...")
                 self.quit()
             except Exception:
                 pass
@@ -376,30 +386,15 @@ class PNCPScraperRefactored(BasePortalScraper):
             # AQUI É ONDE ELE PARAVA — AGORA ENTRA O FLUXO CORRETO
             self.apply_login_context(ano_ref)
 
-            pages = 0
-            total = 0
+            # Passo 1.1: Remoção de qualquer retorno estático ou mockado
+            # Agora delegamos para a lógica fiel ao VBA que já está implementada em pncp_scraper_vba_logic.py
+            from .pncp_scraper_vba_logic import PNCPScraperVBA
+            pncp_vba = PNCPScraperVBA(self.driver, ano_ref)
+            all_collected_data = pncp_vba.Dados_PNCP()
+            
+            total = len(all_collected_data)
+            pages = 1 # A lógica VBA trata a paginação internamente via rolagem/abas
             errors = []
-            all_collected_data = []
-
-            # ... (lógica de coleta de dados permanece a mesma)
-            while True:
-                data = self.collect_page_data()
-                all_collected_data.extend(data)
-                total += len(data)
-                pages += 1
-
-                # Log detalhado por página: quantidade e conteúdo dos itens coletados
-                try:
-                    logger.info(f"Página {pages}: coletados {len(data)} itens")
-                    logger.info(f"Página {pages} - itens: {json.dumps(data, ensure_ascii=False)}")
-                except Exception:
-                    logger.info(f"Página {pages}: erro ao serializar itens para log")
-
-                if not self.go_next_page(next_button_key="paginator_next"):
-                    break
-
-                if max_pages and pages >= max_pages:
-                    break
 
             # SALVAMENTO NO BANCO DE DADOS (NOVO)
             if all_collected_data:

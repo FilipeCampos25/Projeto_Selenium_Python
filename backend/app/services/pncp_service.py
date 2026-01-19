@@ -23,45 +23,24 @@ def coleta_pncp(username: str, password: str, ano_ref: str, headless: bool = Tru
     if not ano_ref:
         raise ValueError("ano_ref is required")
     
-    # Lógica de Decisão (Passo 20)
-    # A Feature Flag agora é True por padrão. O mock só é usado se explicitamente solicitado.
-    real_enabled = is_pncp_real_enabled()
-    final_use_mock = use_mock if use_mock is not None else (not real_enabled)
+    # Passo 1.1: Remoção definitiva do mock.
+    # A implementação real agora é a única via de execução.
     
-    logger.info(f"=== [SERVICE] INICIANDO COLETA PNCP DEFINITIVA - ANO {ano_ref} ===")
+    logger.info(f"=== [SERVICE] INICIANDO COLETA PNCP REAL - ANO {ano_ref} ===")
     
-    dados_brutos: List[Dict[str, Any]] = []
-    
-    if final_use_mock:
-        # MOCK MANTIDO APENAS PARA TESTES DE EMERGÊNCIA (Passo 20)
-        logger.info("[AVISO] Modo MOCK ativado manualmente para o PNCP.")
-        dados_brutos = [
-            {
-                "col_a_contratacao": "MOCK-EMERGENCIA",
-                "col_b_descricao": "MODO MOCK ATIVADO MANUALMENTE",
-                "col_c_categoria": "Teste",
-                "col_d_valor": 0.0,
-                "col_e_inicio": None,
-                "col_f_fim": None,
-                "col_g_status": "MOCK",
-                "col_h_status_tipo": "MOCK",
-                "col_i_dfd": "000/0000"
-            }
-        ]
-    else:
-        # IMPLEMENTAÇÃO REAL VALIDADA (Lógica VBA Fiel)
-        logger.info("[LOG-VBA] Executando implementação real validada (Passo 20).")
-        dados_brutos = run_pncp_scraper_vba(ano_ref=ano_ref)
+    # IMPLEMENTAÇÃO REAL VALIDADA (Lógica VBA Fiel)
+    logger.info("[LOG-VBA] Executando implementação real (Passo 1.1).")
+    dados_brutos = run_pncp_scraper_vba(ano_ref=ano_ref)
     
     resultado = {
         "status": "ok" if dados_brutos else "no_data",
         "total_itens": len(dados_brutos),
         "ano_referencia": ano_ref,
-        "modo": "MOCK" if final_use_mock else "REAL"
+        "modo": "REAL"
     }
 
     # --- PERSISTÊNCIA NO BANCO (Passo 14) ---
-    if dados_brutos and not final_use_mock:
+    if dados_brutos:
         logger.info(f"[LOG-VBA] Persistindo {len(dados_brutos)} itens no Postgres...")
         try:
             repo = ColetasRepository()

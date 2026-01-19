@@ -4,6 +4,7 @@ Gerencia a persistência de dados no arquivo Excel seguindo fielmente a lógica 
 
 HISTÓRICO DE ADAPTAÇÃO:
 - Passo 15: Reativação da exportação para Excel com estrutura fiel ao VBA (Colunas A a I).
+- Passo 4.1: Expansão para colunas A a K conforme Módulo1.bas (PNCP).
 """
 import os
 import logging
@@ -42,10 +43,10 @@ class ExcelPersistence:
             for col, header in enumerate(headers_pgc, 1):
                 ws_pgc.cell(row=1, column=col, value=header)
             
-            # Inicializar cabeçalhos da aba PNCP (VBA linhas 2157-2167)
-            # Colunas: A:Contratação, B:Descrição, C:Categoria, D:Valor, E:Início, F:Fim, G:Status, H:Status_Tipo, I:DFD
+            # Inicializar cabeçalhos da aba PNCP (VBA linhas 2279-2289)
+            # Colunas: A:Contratação, B:Descrição, C:Categoria, D:Valor, E:Início, F:Fim, G:Status, H:PGC, I:DFD, J:Status, K:Tipo
             ws_pncp = wb["PNCP"]
-            headers_pncp = ["Contratação", "Descrição", "Categoria", "Valor", "Início", "Fim", "Status", "Status_Tipo", "DFD"]
+            headers_pncp = ["Contratação", "Descrição", "Categoria", "Valor", "Início", "Fim", "Status", "PGC", "DFD", "Status", "Tipo"]
             for col, header in enumerate(headers_pncp, 1):
                 ws_pncp.cell(row=1, column=col, value=header)
 
@@ -81,8 +82,8 @@ class ExcelPersistence:
 
     def update_pncp_sheet(self, data: List[Dict[str, Any]]):
         """
-        Atualiza a aba PNCP seguindo fielmente o mapeamento de colunas do VBA (A a I).
-        Implementação do Passo 15: Reativação da exportação com formatação e auditoria.
+        Atualiza a aba PNCP seguindo fielmente o mapeamento de colunas do VBA (A a K).
+        Implementação do Passo 4.1: Fidelidade total à estrutura do Módulo1.bas.
         """
         logger.info(f"[LOG-VBA] Iniciando atualização da aba PNCP no Excel...")
         try:
@@ -93,40 +94,45 @@ class ExcelPersistence:
             
             ws = wb["PNCP"]
             
-            # Limpar dados antigos para garantir fidelidade à nova coleta (VBA: ClearContents)
+            # Limpar dados antigos para garantir fidelidade à nova coleta (VBA: Range("A:U").Delete)
             if ws.max_row > 1:
                 ws.delete_rows(2, ws.max_row)
 
             # Estilização do cabeçalho (Simulando o padrão profissional do VBA)
             header_fill = PatternFill(start_color="D3D3D3", end_color="D3D3D3", fill_type="solid")
             header_font = Font(bold=True)
-            for col in range(1, 10):
+            for col in range(1, 12): # Colunas A a K
                 cell = ws.cell(row=1, column=col)
                 cell.fill = header_fill
                 cell.font = header_font
                 cell.alignment = Alignment(horizontal="center")
 
             for row_idx, entry in enumerate(data, 2):
-                # Mapeamento fiel às colunas do VBA (Passo 3/15)
+                # Mapeamento fiel às colunas do VBA (Passo 4.1)
                 # Coluna A: Contratação
                 ws.cell(row=row_idx, column=1, value=entry.get("col_a_contratacao"))
                 # Coluna B: Descrição
                 ws.cell(row=row_idx, column=2, value=entry.get("col_b_descricao"))
                 # Coluna C: Categoria
                 ws.cell(row=row_idx, column=3, value=entry.get("col_c_categoria"))
-                # Coluna D: Valor (VBA: CDbl)
+                # Coluna D: Valor (VBA: CDbl e NumberFormat = "$#,##0.00")
                 cell_valor = ws.cell(row=row_idx, column=4, value=entry.get("col_d_valor"))
-                cell_valor.number_format = '#,##0.00'
+                cell_valor.number_format = '"R$" #,##0.00'
                 # Coluna E: Início (VBA: CDate)
                 ws.cell(row=row_idx, column=5, value=entry.get("col_e_inicio"))
                 # Coluna F: Fim (VBA: CDate)
                 ws.cell(row=row_idx, column=6, value=entry.get("col_f_fim"))
                 # Coluna G: Status
                 ws.cell(row=row_idx, column=7, value=entry.get("col_g_status"))
-                # Coluna H: Status Tipo
+                # Coluna H: PGC (VBA: Worksheets("PNCP").Range("H" + ...).Value = "REPROVADA" ou status)
                 ws.cell(row=row_idx, column=8, value=entry.get("col_h_status_tipo"))
-                # Coluna I: DFD (VBA: Format)
-                ws.cell(row=row_idx, column=9, value=entry.get("col_i_dfd"))
+                # Coluna I: DFD (VBA: Format(..., "@@@\/@@@@") e NumberFormat = "@")
+                cell_dfd = ws.cell(row=row_idx, column=9, value=entry.get("col_i_dfd"))
+                cell_dfd.number_format = '@'
+                # Coluna J: Status (Repetido no VBA)
+                ws.cell(row=row_idx, column=10, value=entry.get("col_g_status"))
+                # Coluna K: Tipo (Repetido no VBA)
+                ws.cell(row=row_idx, column=11, value=entry.get("col_h_status_tipo"))
 
             # Ajuste automático de largura (VBA: Columns.AutoFit)
             for col in ws.columns:
