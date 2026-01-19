@@ -27,6 +27,7 @@
     "valor": "/div[5]/p",
     "inicio": "/div[6]/p",
     "fim": "/div[7]/p",
+    "status_aprovada": "/div[8]/p",
     "status_pendente": "/div[1]/div/div[2]/div/span"
   }
 }

@@ -10,10 +10,10 @@ import logging
 
 logger = logging.getLogger(__name__)
 
-def coleta_pncp(username: str, password: str, ano_ref: str, headless: bool = True, timeout: int = 20, use_mock: bool = True) -> Dict[str, Any]:
+def coleta_pncp(username: str, password: str, ano_ref: str, headless: bool = True, timeout: int = 20, use_mock: bool = False) -> Dict[str, Any]:
     """
     Orquestra a coleta do PNCP e persiste o resultado no Banco e no Excel.
-    Implementação do Passo 6: Substituição progressiva do mock.
+    Implementação do Passo 11: Ativação da lógica real com paginação fiel ao VBA.
     """
     if not ano_ref:
         raise ValueError("ano_ref is required")
@@ -23,12 +23,12 @@ def coleta_pncp(username: str, password: str, ano_ref: str, headless: bool = Tru
     dados_brutos = []
     
     if use_mock:
-        # MOCK ATIVO (Conforme Passo 6 do manual)
-        logger.info("Utilizando MOCK para coleta PNCP (Passo 6)")
+        # MOCK DESATIVADO POR PADRÃO NO PASSO 11
+        logger.info("Utilizando MOCK para coleta PNCP")
         dados_brutos = [
             {
                 "col_a_contratacao": "MOCK-001/2025",
-                "col_b_descricao": "ITEM MOCK PARA TESTE DE FLUXO (PASSO 6)",
+                "col_b_descricao": "ITEM MOCK PARA TESTE DE FLUXO",
                 "col_c_categoria": "Serviços",
                 "col_d_valor": 1000.00,
                 "col_e_inicio": "2025-01-01",
@@ -38,20 +38,15 @@ def coleta_pncp(username: str, password: str, ano_ref: str, headless: bool = Tru
                 "col_i_dfd": "000/2025"
             }
         ]
-        # Executa a implementação real em paralelo (apenas abertura, sem coleta/persistência)
-        # conforme solicitado no item 6 do manual.
-        try:
-            logger.info("Iniciando implementação real em paralelo (Apenas abertura - Passo 6)")
-            run_pncp_scraper_vba(ano_ref=ano_ref, dry_run=True)
-        except Exception as e:
-            logger.warning(f"Falha na execução paralela da lógica real: {e}")
     else:
-        # IMPLEMENTAÇÃO REAL (Lógica VBA fiel)
+        # IMPLEMENTAÇÃO REAL (Lógica VBA fiel com Paginação do Passo 11)
+        logger.info("Iniciando implementação real (Lógica VBA Fiel - Passo 11)")
         dados_brutos = run_pncp_scraper_vba(ano_ref=ano_ref)
     
     resultado = {
         "status": "ok" if dados_brutos else "no_data",
         "collected_data": dados_brutos,
+        "total_itens": len(dados_brutos),
         "ano_referencia": ano_ref,
         "is_mock": use_mock
     }
