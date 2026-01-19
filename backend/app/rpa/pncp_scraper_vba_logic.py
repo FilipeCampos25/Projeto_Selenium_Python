@@ -157,29 +157,68 @@ class PNCPScraperVBA:
                 # Rola para o elemento (VBA: .ScrollIntoView)
                 self.driver.execute_script("arguments[0].scrollIntoView({block: 'center'});", el_contratacao)
                 
-                # INVENTÁRIO DE CAMPOS (Passo 3) & CONTRATO DE DADOS (Passo 5)
-                raw_item = {
-                    "col_a_contratacao": el_contratacao.text,
-                    "col_b_descricao": self.driver.find_element(By.XPATH, f"{base_xpath}{f['descricao']}").text,
-                    "col_c_categoria": self.driver.find_element(By.XPATH, f"{base_xpath}{f['categoria']}").text,
-                    "col_d_valor": self._parse_vba_cdbl(self.driver.find_element(By.XPATH, f"{base_xpath}{f['valor']}").text),
-                    "col_e_inicio": self._parse_vba_cdate(self.driver.find_element(By.XPATH, f"{base_xpath}{f['inicio']}").text),
-                    "col_f_fim": self._parse_vba_cdate(self.driver.find_element(By.XPATH, f"{base_xpath}{f['fim']}").text),
-                    "col_g_status": status_vba,
-                    "col_h_status_tipo": status_vba,
-                    "col_i_dfd": self._format_dfd(self.driver.find_element(By.XPATH, f"{base_xpath}{f['descricao']}").text)
-                }
+                # --- COLETA INCREMENTAL DE CAMPOS (Passo 9) ---
+                # Cada campo é coletado e logado individualmente para garantir fidelidade ao VBA.
                 
+                # 1. Coluna A: ID Contratação
+                val_a = el_contratacao.text
+                logger.debug(f"Campo A (Contratação) coletado: {val_a}")
+                
+                # 2. Coluna B: Descrição
+                val_b = self.driver.find_element(By.XPATH, f"{base_xpath}{f['descricao']}").text
+                logger.debug(f"Campo B (Descrição) coletado: {val_b[:50]}...")
+                
+                # 3. Coluna I: DFD (Extraído da Descrição - VBA: Format(Left(SoNumero(...), 7), "@@@\/@@@@"))
+                val_i = self._format_dfd(val_b)
                 # Regra de Negócio Específica (VBA: If ... Value = "157/2024" Then ... = "157/2025")
-                if raw_item["col_i_dfd"] == "157/2024":
-                    raw_item["col_i_dfd"] = "157/2025"
-                    
-                # Status específico para Pendentes
+                if val_i == "157/2024":
+                    val_i = "157/2025"
+                logger.debug(f"Campo I (DFD) processado: {val_i}")
+                
+                # 4. Coluna C: Categoria
+                val_c = self.driver.find_element(By.XPATH, f"{base_xpath}{f['categoria']}").text
+                logger.debug(f"Campo C (Categoria) coletado: {val_c}")
+                
+                # 5. Coluna D: Valor (VBA: CDbl(...))
+                val_d_raw = self.driver.find_element(By.XPATH, f"{base_xpath}{f['valor']}").text
+                val_d = self._parse_vba_cdbl(val_d_raw)
+                logger.debug(f"Campo D (Valor) processado: {val_d} (Original: {val_d_raw})")
+                
+                # 6. Coluna E: Início (VBA: CDate(...))
+                val_e_raw = self.driver.find_element(By.XPATH, f"{base_xpath}{f['inicio']}").text
+                val_e = self._parse_vba_cdate(val_e_raw)
+                logger.debug(f"Campo E (Início) processado: {val_e} (Original: {val_e_raw})")
+                
+                # 7. Coluna F: Fim (VBA: CDate(...))
+                val_f_raw = self.driver.find_element(By.XPATH, f"{base_xpath}{f['fim']}").text
+                val_f = self._parse_vba_cdate(val_f_raw)
+                logger.debug(f"Campo F (Fim) processado: {val_f} (Original: {val_f_raw})")
+                
+                # 8. Coluna G: Status
+                val_g = status_vba
                 if aba_id == "pendentes":
                     try:
-                        raw_item["col_g_status"] = self.driver.find_element(By.XPATH, f"{base_xpath}{f['status_pendente']}").text
+                        val_g = self.driver.find_element(By.XPATH, f"{base_xpath}{f['status_pendente']}").text
                     except:
                         pass
+                logger.debug(f"Campo G (Status) definido: {val_g}")
+                
+                # 9. Coluna H: Status Tipo (VBA: .Range("H" ...).Value = "REPROVADA" / "APROVADA" / "PENDENTE")
+                val_h = status_vba
+                logger.debug(f"Campo H (Status Tipo) definido: {val_h}")
+
+                # Montagem do item validado pelo contrato (Passo 5)
+                raw_item = {
+                    "col_a_contratacao": val_a,
+                    "col_b_descricao": val_b,
+                    "col_c_categoria": val_c,
+                    "col_d_valor": val_d,
+                    "col_e_inicio": val_e,
+                    "col_f_fim": val_f,
+                    "col_g_status": val_g,
+                    "col_h_status_tipo": val_h,
+                    "col_i_dfd": val_i
+                }
 
                 # Validação via Contrato de Dados (Passo 5)
                 validated_item = PNCPItemSchema(**raw_item)
