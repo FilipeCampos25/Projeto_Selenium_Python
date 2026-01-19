@@ -33,15 +33,16 @@ class PNCPScraperVBA:
     Classe que implementa o inventário de campos do PNCP (Passo 3).
     Mantém fidelidade total aos tipos de dados e formatações do VBA.
     """
-    def __init__(self, driver: WebDriver, ano_ref: str = "2025"):
+    def __init__(self, driver: WebDriver, ano_ref: str = "2025", dry_run: bool = False):
         self.driver = driver
         self.ano_ref = ano_ref
+        self.dry_run = dry_run
         self.compat = VBACompat(driver)
         self.data_collected = []
 
     def Dados_PNCP(self) -> List[Dict[str, Any]]:
         """Replica Sub Dados_PNCP() do VBA."""
-        logger.info("=== INICIANDO COLETA PNCP (Lógica VBA - Passo 3) ===")
+        logger.info(f"=== INICIANDO COLETA PNCP (Lógica VBA - Dry Run: {self.dry_run}) ===")
         
         # 1. Testa o spinner (VBA: Call testa_spinner)
         self.compat.testa_spinner()
@@ -51,6 +52,10 @@ class PNCPScraperVBA:
             self.compat.wait_for_checkpoint(XPATHS["pca_selection"]["button_formacao_pca"], timeout=50)
         except CheckpointFailureError:
             logger.error("Falha ao aguardar botão 'Formação do PCA'.")
+            return []
+
+        if self.dry_run:
+            logger.info("Dry Run ativo: Parando após validação da página inicial (Passo 6).")
             return []
 
         # 3. Seleciona Formação do PCA
@@ -221,12 +226,12 @@ class PNCPScraperVBA:
             return f"{left_7[:3]}/{left_7[3:]}"
         return nums
 
-def run_pncp_scraper_vba(ano_ref: str = "2025") -> List[Dict[str, Any]]:
+def run_pncp_scraper_vba(ano_ref: str = "2025", dry_run: bool = False) -> List[Dict[str, Any]]:
     """Entrypoint para o scraper PNCP com lógica VBA."""
     from .driver_factory import create_driver
     driver = create_driver(headless=False)
     try:
-        scraper = PNCPScraperVBA(driver, ano_ref)
+        scraper = PNCPScraperVBA(driver, ano_ref, dry_run=dry_run)
         from .pgc_scraper_vba_logic import PGCScraperVBA
         pgc_login = PGCScraperVBA(driver, ano_ref)
         if pgc_login.A_Loga_Acessa_PGC():
