@@ -42,45 +42,65 @@ class PNCPScraperVBA:
 
     def Dados_PNCP(self) -> List[Dict[str, Any]]:
         """Replica Sub Dados_PNCP() do VBA."""
-        logger.info(f"=== INICIANDO COLETA PNCP (Lógica VBA - Dry Run: {self.dry_run}) ===")
+        logger.info(f"=== INICIANDO COLETA PNCP (Lógica VBA - Passo 7: Navegação Inicial) ===")
         
         # 1. Testa o spinner (VBA: Call testa_spinner)
         self.compat.testa_spinner()
         
-        # 2. Aguarda a tela aparecer (VBA: driver.FindElementByXPath(...).Click)
-        try:
-            self.compat.wait_for_checkpoint(XPATHS["pca_selection"]["button_formacao_pca"], timeout=50)
-        except CheckpointFailureError:
-            logger.error("Falha ao aguardar botão 'Formação do PCA'.")
+        # 2. Aguarda a tela aparecer (VBA: Do ... Loop Until driver.FindElementByXPath(...).IsDisplayed)
+        # Replicando o loop de espera do VBA com Application.Wait interno
+        start_wait = time.time()
+        while time.time() - start_wait < 50:
+            # VBA: Application.Wait Now + TimeValue("00:00:01") / 4
+            time.sleep(0.25)
+            try:
+                if self.driver.find_element(By.XPATH, XPATHS["pca_selection"]["button_formacao_pca"]).is_displayed():
+                    break
+            except:
+                pass
+        else:
+            logger.error("Falha ao aguardar botão 'Formação do PCA' (Timeout Passo 7).")
             return []
 
         if self.dry_run:
-            logger.info("Dry Run ativo: Parando após validação da página inicial (Passo 6).")
+            logger.info("Dry Run ativo: Parando após validação da página inicial (Passo 6/7).")
             return []
 
-        # 3. Seleciona Formação do PCA
-        self.compat.safe_click(XPATHS["pca_selection"]["button_formacao_pca"])
+        # 3. Seleciona Formação do PCA (VBA: .ScrollIntoView e .Click)
+        btn_formacao = self.driver.find_element(By.XPATH, XPATHS["pca_selection"]["button_formacao_pca"])
+        self.driver.execute_script("arguments[0].scrollIntoView();", btn_formacao)
+        btn_formacao.click()
+        
+        # 4. Testa o spinner (VBA: Call testa_spinner)
         self.compat.testa_spinner()
 
-        # 4. Aguarda combo de seleção de período
-        try:
-            self.compat.wait_for_checkpoint(XPATHS["pca_selection"]["dropdown_pca"], timeout=30)
-        except CheckpointFailureError:
-            logger.error("Falha ao aguardar dropdown PCA.")
+        # 5. Aguarda combo de seleção de período (VBA: Do While Not driver.IsElementPresent(...))
+        start_wait = time.time()
+        while time.time() - start_wait < 30:
+            if len(self.driver.find_elements(By.XPATH, XPATHS["pca_selection"]["dropdown_pca"])) > 0:
+                break
+            time.sleep(0.5)
+        else:
+            logger.error("Falha ao aguardar dropdown PCA (Timeout Passo 7).")
             return []
         
+        # 6. Testa o spinner (VBA: Call testa_spinner)
         self.compat.testa_spinner()
 
-        # 5. Seleciona o combo
-        self.compat.safe_click(XPATHS["pca_selection"]["dropdown_pca"])
+        # 7. Seleciona o combo (VBA: driver.FindElementByXPath(...).Click)
+        self.driver.find_element(By.XPATH, XPATHS["pca_selection"]["dropdown_pca"]).click()
+        
+        # 8. Testa o spinner (VBA: Call testa_spinner)
         self.compat.testa_spinner()
 
-        # 6. Seleciona o ano do PGC pretendido
+        # 9. Seleciona o ano do PGC pretendido (VBA: driver.FindElementByXPath(...).Click)
         li_pca_xpath = XPATHS["pca_selection"]["li_pca_ano_template"].replace("{ano}", self.ano_ref)
-        self.compat.safe_click(li_pca_xpath)
+        self.driver.find_element(By.XPATH, li_pca_xpath).click()
+        
+        # 10. Testa o spinner (VBA: Call testa_spinner)
         self.compat.testa_spinner()
 
-        # 7. Dá um tempo (VBA: Application.Wait Now + TimeValue("00:00:01"))
+        # 11. Dá um tempo (VBA: Application.Wait Now + TimeValue("00:00:01"))
         time.sleep(1)
 
         # --- SEÇÃO REPROVADAS ---
