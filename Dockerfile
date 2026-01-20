@@ -36,7 +36,7 @@ COPY . /app
 RUN useradd -ms /bin/bash appuser && \
     chown -R appuser:appuser /app && \
     chmod -R 755 /app && \
-    chmod 644 backend/.env
+    chmod 644 .env
 
 USER appuser
 

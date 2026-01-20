@@ -24,7 +24,7 @@ Data flows: API → Scraper → JSON validation → DB storage → Query endpoin
 - **Selectors**: Store all XPaths in JSON files (e.g., `pgc_xpaths.json`). Never hardcode selectors in code.
 - **Data Storage**: Use JSONB columns for flexible schemas. Example: `salvar_pncp(session, {"records": [...], "metadata": {...}})` in repositories.
 - **Error Handling**: Fail fast with descriptive logs; avoid swallowing exceptions. Use structured logging with `logger.info/json.dumps(data)`.
-- **Configuration**: Load from Pydantic settings in `config.py`; override via `backend/.env`.
+- **Configuration**: Load from Pydantic settings in `config.py`; override via `.env` (in project root).
 
 ## Integration Points
 - **Selenium**: Remote Chrome via `http://selenium:4444` in Docker; local driver for dev.

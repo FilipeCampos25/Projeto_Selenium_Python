@@ -87,7 +87,7 @@ Utiliza Selenium para automação web, FastAPI para API de orquestração, Postg
   
 - **Configuração**: 
   - `backend/config.py`: Settings via Pydantic (DATABASE_URL, SELENIUM_URL, etc)
-  - `backend/.env`: Variáveis de ambiente (não commitadas)
+  - `.env`: Variáveis de ambiente (não commitadas) - na raiz do projeto
   - `docker-compose.yml`: Orquestração de containers
 
 ## Fluxo de Dados - PGC

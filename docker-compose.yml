@@ -47,7 +47,7 @@ services:
     container_name: projeto-web
 
     env_file:
-      - backend/.env
+      - .env
 
     environment:
       - DEBUG_MODE=true

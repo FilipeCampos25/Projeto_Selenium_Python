@@ -101,8 +101,8 @@ API_HOST=0.0.0.0
 
 ### Arquivo .env
 ```bash
-# Criar arquivo backend/.env
-touch backend/.env
+# Criar arquivo .env na raiz do projeto
+touch .env
 # Adicionar variáveis acima
 ```
 
