@@ -16,6 +16,7 @@ from backend.app.config import settings
 from backend.app.api.routers import health, pages
 from backend.app.api.routers.pncp import router as pncp_router_refactored
 from backend.app.api.routers.pgc import router as pgc_router
+from backend.app.api.routers.coleta_unificada import router as coleta_unificada_router
 from backend.app.core.logging_config import setup_logging
 from backend.app.db.repositories import ColetasRepository
 
@@ -100,6 +101,7 @@ app.include_router(health.router, prefix="/api", tags=["health"])
 app.include_router(pages.router, tags=["pages"])
 app.include_router(pncp_router_refactored)
 app.include_router(pgc_router)
+app.include_router(coleta_unificada_router)
 
 # ============================================================
 # EVENTS
