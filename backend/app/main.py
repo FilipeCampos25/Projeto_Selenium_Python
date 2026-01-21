@@ -1,5 +1,5 @@
 """
-FastAPI main app — VERSÃO FINAL CORRIGIDA
+FastAPI main app — VERSÃO ADAPTADA PARA EXECUÇÃO LOCAL
 """
 
 import os
@@ -18,7 +18,17 @@ from backend.app.api.routers.pncp import router as pncp_router_refactored
 from backend.app.api.routers.pgc import router as pgc_router
 from backend.app.api.routers.coleta_unificada import router as coleta_unificada_router
 from backend.app.core.logging_config import setup_logging
-from backend.app.db.repositories import ColetasRepository
+
+# ============================================================
+# 🔴 INÍCIO MODIFICAÇÃO LOCAL - REMOVER QUANDO VOLTAR DOCKER
+# ============================================================
+
+# NÃO IMPORTAR ColetasRepository (requer Postgres)
+# from backend.app.db.repositories import ColetasRepository
+
+# ============================================================
+# 🔴 FIM MODIFICAÇÃO LOCAL
+# ============================================================
 
 # ============================================================
 # PATHS ABSOLUTOS
@@ -32,7 +42,6 @@ if not TEMPLATES_DIR.exists():
     if fallback_dir.exists():
         TEMPLATES_DIR = fallback_dir
     else:
-        # Cria diretório se não existir para evitar erro fatal
         os.makedirs(TEMPLATES_DIR, exist_ok=True)
 
 templates = Jinja2Templates(directory=str(TEMPLATES_DIR))
@@ -49,8 +58,8 @@ logger = logging.getLogger(__name__)
 # ============================================================
 
 app = FastAPI(
-    title="Sistema de Coleta PGC/PNCP",
-    version="2.0.0",
+    title="Sistema de Coleta PGC/PNCP - MODO LOCAL",
+    version="2.0.0-LOCAL",
     docs_url="/docs",
     redoc_url="/redoc"
 )
@@ -110,22 +119,34 @@ app.include_router(coleta_unificada_router)
 @app.on_event("startup")
 async def startup_event():
     logger.info("=" * 70)
-    logger.info("🚀 Sistema de Coleta PGC/PNCP INICIADO")
+    logger.info("🚀 Sistema de Coleta PGC/PNCP INICIADO - MODO LOCAL")
     
-    # Inicialização do Banco de Dados (Tabelas, Triggers, Views)
-    try:
-        logger.info("🗄️ Verificando e inicializando objetos do banco de dados...")
-        # Ao instanciar o repositório, o __init__ chama _ensure_db_objects
-        repo = ColetasRepository()
-        logger.info("✅ Banco de dados inicializado com sucesso.")
-    except Exception as e:
-        logger.error(f"❌ Erro crítico ao inicializar banco de dados: {e}")
+    # ============================================================
+    # 🔴 INÍCIO MODIFICAÇÃO LOCAL - REMOVER QUANDO VOLTAR DOCKER
+    # ============================================================
+    
+    logger.warning("⚠️  MODO LOCAL ATIVO")
+    logger.warning("⚠️  Postgres DESABILITADO")
+    logger.warning("⚠️  Dados salvos apenas em Excel e JSON temporário")
+    logger.warning("⚠️  Selenium usando Chrome LOCAL da máquina")
+    
+    # NÃO INICIALIZAR BANCO DE DADOS
+    # try:
+    #     logger.info("Verificando banco de dados...")
+    #     repo = ColetasRepository()
+    #     logger.info("Banco de dados OK.")
+    # except Exception as e:
+    #     logger.error(f"Erro ao inicializar banco: {e}")
+    
+    # ============================================================
+    # 🔴 FIM MODIFICAÇÃO LOCAL
+    # ============================================================
         
     logger.info("=" * 70)
 
 @app.on_event("shutdown")
 async def shutdown_event():
-    logger.info("🛑 Sistema desligando")
+    logger.info("🛑 Sistema desligando - MODO LOCAL")
 
 # ============================================================
 # ROOT
@@ -136,10 +157,27 @@ async def root():
     return RedirectResponse(url="/pgc")
 
 if __name__ == "__main__":
+    # ============================================================
+    # 🔴 INÍCIO MODIFICAÇÃO LOCAL
+    # ============================================================
+    
+    logger.info("=" * 70)
+    logger.info("INSTRUÇÕES PARA EXECUÇÃO LOCAL:")
+    logger.info("1. Certifique-se que o Google Chrome está instalado")
+    logger.info("2. Certifique-se que o ChromeDriver está no PATH")
+    logger.info("3. Execute: python -m backend.app.main")
+    logger.info("4. Acesse: http://localhost:8000")
+    logger.info("5. Os arquivos Excel serão salvos em: ./outputs_local/")
+    logger.info("=" * 70)
+    
+    # ============================================================
+    # 🔴 FIM MODIFICAÇÃO LOCAL
+    # ============================================================
+    
     uvicorn.run(
         "backend.app.main:app",
         host="0.0.0.0",
         port=int(os.getenv("PORT", settings.PORT)),
-        reload=False,
+        reload=False,  # Modo local sem reload para evitar problemas
         log_level="info"
     )
