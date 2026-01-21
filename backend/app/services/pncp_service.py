@@ -4,7 +4,21 @@ Service layer para orquestrar a coleta do PNCP e o tratamento de dados.
 MODIFICADO PARA EXECUÇÃO LOCAL.
 """
 from ..rpa.pncp_scraper_vba_logic import run_pncp_scraper_vba
-from ..db.repositories import ColetasRepository
+
+# ============================================================
+# 🔴 INÍCIO MODIFICAÇÃO LOCAL - REMOVER QUANDO VOLTAR DOCKER
+# ============================================================
+# Importar ColetasRepository de forma segura (pode falhar em modo local)
+try:
+    from ..db.repositories import ColetasRepository
+    POSTGRES_AVAILABLE = True
+except Exception:
+    ColetasRepository = None
+    POSTGRES_AVAILABLE = False
+# ============================================================
+# 🔴 FIM MODIFICAÇÃO LOCAL
+# ============================================================
+
 from .excel_persistence import ExcelPersistence
 from typing import Dict, Any, List
 import logging

@@ -3,13 +3,17 @@ Arquivo: config.py
 Configuração adaptada para execução LOCAL (sem Docker)
 """
 
+import os
 from typing import Optional
 from pydantic_settings import BaseSettings, SettingsConfigDict
+
+# Determinar arquivo .env a carregar
+_env_file_to_load = ".env.local" if os.path.exists(".env.local") else ".env"
 
 class Settings(BaseSettings):
     # Configuração do carregamento de variáveis
     model_config = SettingsConfigDict(
-        env_file=".env",
+        env_file=_env_file_to_load,
         env_file_encoding="utf-8",
         extra="ignore"
     )

@@ -9,12 +9,12 @@
 
 ### 1. Google Chrome
 - Baixar e instalar: https://www.google.com/chrome/
-- Verificar instalação: `google-chrome --version`
+- Verificar instalação: `google-chrome --version` (ou procure no menu Iniciar)
+- **Nota**: Não precisa estar no PATH, o Selenium gerencia automaticamente
 
-### 2. ChromeDriver (Opcional - Selenium pode gerenciar)
-- Baixar: https://chromedriver.chromium.org/
-- Colocar no PATH ou na pasta do projeto
-- Verificar: `chromedriver --version`
+### 2. ChromeDriver
+- **AUTOMÁTICO**: O projeto usa `webdriver-manager` que baixa o ChromeDriver compatível automaticamente
+- Não precisa instalar manualmente (era necessário em versões antigas do Selenium)
 
 ### 3. Python 3.11+
 - Verificar: `python --version`
@@ -38,8 +38,8 @@ source venv/bin/activate
 # 3. Instalar dependências
 pip install -r requirements.txt
 
-# 4. Executar script de inicialização
-python run_local.py
+# 4. Executar script de inicialização (com carregamento de .env.local)
+python run_local_server.py
 ```
 
 ### Opção 2: Manual
@@ -56,11 +56,11 @@ source venv/bin/activate  # Linux/Mac
 # 3. Instalar dependências
 pip install -r requirements.txt
 
-# 4. Criar arquivo .env (copiar do .env de exemplo)
-# Copiar conteúdo do artifact "env_local"
+# 4. Arquivo .env.local é criado automaticamente (OU edit manualmente)
+# Se quiser editar: abra o arquivo .env.local com seu editor de texto
 
-# 5. Executar servidor
-python -m backend.app.main
+# 5. Executar servidor usando o wrapper que carrega .env.local
+python run_local_server.py
 ```
 
 ---
@@ -70,6 +70,11 @@ python -m backend.app.main
 1. **Interface Web**: http://localhost:8000/pgc
 2. **API Docs**: http://localhost:8000/docs
 3. **Health Check**: http://localhost:8000/api/ready
+
+### Em Modo Local (Sem Docker):
+- ❌ **SEM noVNC**: O navegador Chrome abrirá **localmente em sua máquina**
+- ✅ **Com Chrome local**: Você verá o navegador normalmente
+- 🖱️ **Login manual**: Quando a página do portal abrir, você fará o login normalmente (sem precisar de VNC)
 
 ---
 
@@ -90,22 +95,26 @@ projeto_adaptado/
 ### Erro: "Chrome not found"
 ```bash
 # Verificar se Chrome está instalado
-google-chrome --version
-
-# Se não estiver, instalar:
-# Windows: Baixar de https://www.google.com/chrome/
+# Windows: Procure "Google Chrome" no menu Iniciar
 # Linux: sudo apt install google-chrome-stable
+# Mac: https://www.google.com/chrome/
+
+# Se der erro mesmo depois de instalar, tente reiniciar o terminal e o Python
 ```
 
-### Erro: "ChromeDriver not compatible"
+### Erro: "ChromeDriver version mismatch" ou "WebDriverException"
 ```bash
-# Verificar versão do Chrome
-google-chrome --version
+# O projeto usa webdriver-manager que gerencia automaticamente
+# Se der erro, tente:
 
-# Baixar ChromeDriver compatível
-# https://chromedriver.chromium.org/downloads
+# 1. Deletar cache de drivers
+rm -r ~/.wdm -ErrorAction SilentlyContinue  # Windows
 
-# Colocar chromedriver.exe no PATH ou na pasta do projeto
+# 2. Deletar cache do Selenium
+rm -r ~/.cache/webdriver-manager -ErrorAction SilentlyContinue  # Windows
+
+# 3. Reinstalar dependências
+pip install --upgrade -r requirements.txt
 ```
 
 ### Erro: "Module not found"
@@ -116,7 +125,7 @@ pip install --upgrade -r requirements.txt
 
 ### Navegador não abre
 ```bash
-# Verificar se SELENIUM_HEADLESS=false no .env
+# Verificar se SELENIUM_HEADLESS=false no .env.local
 # Se estiver true, o navegador fica invisível
 ```
 
@@ -135,8 +144,8 @@ SELENIUM_HEADLESS=false
 PORT=8000
 LOG_LEVEL=INFO
 
-# Postgres desabilitado
-# DATABASE_URL=disabled
+# Database desabilitado
+DATABASE_URL=disabled
 ```
 
 ---
@@ -201,22 +210,31 @@ docker compose up --build
 1. Usuário acessa http://localhost:8000/pgc
 2. Clica em "Iniciar Coleta"
 3. Informa ano de referência (ex: 2025)
-4. Chrome abre AUTOMATICAMENTE e VISÍVEL
-5. Usuário faz LOGIN MANUAL
+4. Chrome abre AUTOMATICAMENTE e LOCALMENTE em sua máquina
+5. Você faz LOGIN MANUALMENTE no portal (sem VNC)
 6. Sistema realiza coleta automaticamente
 7. Dados salvos em:
    - outputs_local/PGC_2025.xlsx (Excel)
    - dados_locais_temp/PGC_timestamp.json (temporário)
 ```
 
+### Diferença de Modo LOCAL vs DOCKER:
+| Aspecto | Local | Docker |
+|--------|-------|--------|
+| Navegador | Abre localmente na sua máquina | Acessa via noVNC (web) |
+| Login | Manual no Chrome | Manual via VNC |
+| Banco de dados | Desabilitado (Excel local) | PostgreSQL ativo |
+| Ambiente | Sistema operacional nativo | Container isolado |
+
 ---
 
 ## ⚠️ Limitações do Modo Local
 
-1. **Sem Postgres**: Dados não persistidos em banco
+1. **Sem Postgres**: Dados não persistidos em banco (apenas Excel local)
 2. **Sem noVNC**: Navegador abre localmente (não via web)
-3. **Sem Docker**: Ambiente menos isolado
-4. **Manual**: Requer Chrome e ChromeDriver instalados
+3. **Sem Docker**: Ambiente menos isolado (usa recursos da sua máquina)
+4. **Chrome local**: Requer Chrome instalado na máquina
+5. **Login manual**: Você faz o login normalmente, sem precisar de VNC
 
 ---
 

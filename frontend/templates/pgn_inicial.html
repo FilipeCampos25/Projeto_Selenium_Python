@@ -133,6 +133,11 @@
   </div>
 
   <div id="status" class="log">Nenhuma ação ainda.</div>
+  
+  <!-- ============================================================
+       🔴 INÍCIO MODIFICAÇÃO LOCAL - REMOVER QUANDO VOLTAR DOCKER
+       ============================================================ -->
+  <!-- VNC link (somente em modo Docker) -->
   <a
     id="vncLink"
     class="vnc-link" 
@@ -140,11 +145,41 @@
     target="_blank" 
     style="display:none;">🖥️ Abrir VNC (ver navegador)
   </a>
+  
+  <!-- Aviso de modo local -->
+  <div id="modoLocalAviso" style="display:none; margin-top: 20px; padding: 10px; background-color: #fff3cd; border: 1px solid #ffc107; border-radius: 4px;">
+    <strong>⚠️ Modo LOCAL ativo:</strong> O navegador abrirá em sua máquina. Faça login quando solicitado.
+  </div>
+  <!-- ============================================================
+       🔴 FIM MODIFICAÇÃO LOCAL
+       ============================================================ -->
 
   <script>
     const btnIniciarColeta = document.getElementById('btnIniciarColeta');
     const status = document.getElementById('status');
     const vncLink = document.getElementById('vncLink');
+    
+    // ============================================================
+    // 🔴 INÍCIO MODIFICAÇÃO LOCAL - REMOVER QUANDO VOLTAR DOCKER
+    // ============================================================
+    // Detectar modo local verificando se a API retorna informação de modo
+    let modoLocal = false;
+    
+    // Tentar determinar modo a partir de resposta da API
+    fetch('/api/ready')
+      .then(r => r.json())
+      .then(data => {
+        if (data.mode === 'local') {
+          modoLocal = true;
+          document.getElementById('modoLocalAviso').style.display = 'block';
+        }
+      })
+      .catch(() => {
+        // Se falhar, assumir Docker (padrão)
+      });
+    // ============================================================
+    // 🔴 FIM MODIFICAÇÃO LOCAL
+    // ============================================================
 
     btnIniciarColeta.addEventListener('click', async () => {
       const ano = prompt("Por favor, insira o Ano de Referência (ex: 2025):");
@@ -159,7 +194,18 @@
       }
 
       btnIniciarColeta.disabled = true;
-      status.textContent = 'Iniciando sequência de coleta (PGC -> PNCP)... Abra o VNC para fazer login manual.';
+      
+      // ============================================================
+      // 🔴 INÍCIO MODIFICAÇÃO LOCAL - REMOVER QUANDO VOLTAR DOCKER
+      // ============================================================
+      // Mensagem diferente para modo local vs Docker
+      const mensagemInicial = modoLocal 
+        ? 'Iniciando sequência de coleta (PGC -> PNCP)... O navegador abrirá em sua máquina.' 
+        : 'Iniciando sequência de coleta (PGC -> PNCP)... Abra o VNC para fazer login manual.';
+      status.textContent = mensagemInicial;
+      // ============================================================
+      // 🔴 FIM MODIFICAÇÃO LOCAL
+      // ============================================================
 
       try {
         const resp = await fetch('/api/coleta/iniciar', {
@@ -175,13 +221,23 @@
           return;
         }
         
-        status.textContent = data.message || 'Sequência de coleta iniciada. Faça login no VNC.';
-        vncLink.style.display = 'inline-block';
+        // ============================================================
+        // 🔴 INÍCIO MODIFICAÇÃO LOCAL - REMOVER QUANDO VOLTAR DOCKER
+        // ============================================================
+        // Não abrir noVNC em modo local
+        status.textContent = data.message || 'Sequência de coleta iniciada. Faça login quando solicitado.';
+        
+        if (!modoLocal) {
+          // Apenas em modo Docker: mostrar VNC e abrir automaticamente
+          vncLink.style.display = 'inline-block';
+          setTimeout(() => {
+            window.open('http://localhost:7900', '_blank');
+          }, 1500);
+        }
+        // ============================================================
+        // 🔴 FIM MODIFICAÇÃO LOCAL
+        // ============================================================
 
-        // Abrir VNC automaticamente
-        setTimeout(() => {
-          window.open('http://localhost:7900', '_blank');
-        }, 1500);
 
         // O botão permanece desabilitado para evitar disparos múltiplos durante a execução em background
         // Em um sistema real, poderíamos ter um polling de status mais robusto aqui

@@ -6,10 +6,13 @@ from __future__ import annotations
 import os
 import logging
 import time
+import glob
 from typing import Optional
 from selenium import webdriver
 from selenium.webdriver.remote.webdriver import WebDriver
 from selenium.common.exceptions import WebDriverException
+from webdriver_manager.chrome import ChromeDriverManager
+from selenium.webdriver.chrome.service import Service
 
 logger = logging.getLogger(__name__)
 
@@ -29,6 +32,29 @@ def _apply_vba_driver_settings(driver: WebDriver):
 # ============================================================
 # 🔴 INÍCIO MODIFICAÇÃO LOCAL - REMOVER QUANDO VOLTAR DOCKER
 # ============================================================
+
+def _find_chromedriver_in_cache() -> str:
+    """
+    Procura por ChromeDriver já baixado no cache do webdriver-manager.
+    Retorna o caminho do executável se encontrar.
+    """
+    import glob
+    
+    # Caminho padrão do cache do webdriver-manager
+    wdm_cache = os.path.expanduser("~/.wdm/drivers/chromedriver/win64")
+    
+    if not os.path.exists(wdm_cache):
+        return None
+    
+    # Procurar por qualquer versão baixada
+    # Exemplo: C:\Users\username\.wdm\drivers\chromedriver\win64\143.0.7499.192\chromedriver.exe
+    chromedriver_paths = glob.glob(os.path.join(wdm_cache, "*/chromedriver.exe"))
+    
+    if chromedriver_paths:
+        logger.info(f"[LOCAL] ChromeDriver encontrado em cache: {chromedriver_paths[0]}")
+        return chromedriver_paths[0]
+    
+    return None
 
 def _build_local_driver(headless: bool) -> WebDriver:
     """
@@ -63,7 +89,29 @@ def _build_local_driver(headless: bool) -> WebDriver:
     
     try:
         logger.info("[LOCAL] Criando WebDriver Chrome local...")
-        driver = webdriver.Chrome(options=options)
+        
+        # Tentar encontrar ChromeDriver no cache primeiro
+        chromedriver_path = _find_chromedriver_in_cache()
+        
+        if chromedriver_path and os.path.exists(chromedriver_path):
+            logger.info(f"[LOCAL] Usando ChromeDriver do cache: {chromedriver_path}")
+            service = Service(chromedriver_path)
+        else:
+            logger.warning("[LOCAL] ChromeDriver não encontrado em cache, tentando baixar...")
+            # Se não encontrar, tenta baixar (pode falhar se sem internet)
+            try:
+                service = Service(ChromeDriverManager().install())
+            except Exception as download_err:
+                logger.error(f"[LOCAL] Falha ao baixar: {download_err}")
+                logger.info("[LOCAL] Tentando usar ChromeDriver do PATH do sistema...")
+                # Última tentativa: deixar Selenium procurar no PATH
+                service = None
+        
+        if service:
+            driver = webdriver.Chrome(service=service, options=options)
+        else:
+            driver = webdriver.Chrome(options=options)
+        
         _apply_vba_driver_settings(driver)
         logger.info("[LOCAL] WebDriver Chrome local criado com sucesso!")
         return driver
@@ -71,9 +119,10 @@ def _build_local_driver(headless: bool) -> WebDriver:
         logger.error(f"[LOCAL] Erro ao criar driver local: {e}")
         logger.error("VERIFIQUE SE:")
         logger.error("1. Google Chrome está instalado")
-        logger.error("2. ChromeDriver está no PATH ou na mesma pasta")
-        logger.error("3. ChromeDriver é compatível com sua versão do Chrome")
+        logger.error("2. Há uma versão do ChromeDriver em: C:\\Users\\{user}\\.wdm\\drivers\\chromedriver\\win64\\")
+        logger.error("3. Você tem permissão de leitura no cache")
         raise RuntimeError(f"Falha ao criar driver Chrome local: {e}")
+
 
 # ============================================================
 # 🔴 FIM MODIFICAÇÃO LOCAL

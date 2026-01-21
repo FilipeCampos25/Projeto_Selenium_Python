@@ -19,6 +19,17 @@ def get_database_url():
         or os.getenv("DB_URL")
     )
     
+    # ============================================================
+    # 🔴 INÍCIO MODIFICAÇÃO LOCAL - REMOVER QUANDO VOLTAR DOCKER
+    # ============================================================
+    # Se a URL for "disabled", retorna None (modo local sem Postgres)
+    if url == "disabled":
+        logger.warning("⚠️  Modo LOCAL: Database desabilitado (DATABASE_URL=disabled)")
+        return None
+    # ============================================================
+    # 🔴 FIM MODIFICAÇÃO LOCAL
+    # ============================================================
+    
     if not url:
         # Fallback para Docker Compose padrão
         user = os.getenv("POSTGRES_USER", "postgres")
@@ -39,25 +50,35 @@ def get_database_url():
 
 DATABASE_URL = get_database_url()
 
-# Cria engine global
-engine: Engine = create_engine(
-    DATABASE_URL,
-    pool_pre_ping=True,
-    pool_size=int(os.getenv("DB_POOL_SIZE", "10")),
-    max_overflow=int(os.getenv("DB_MAX_OVERFLOW", "20")),
-    future=True,
-)
-
-SessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine, future=True)
+# ============================================================
+# 🔴 INÍCIO MODIFICAÇÃO LOCAL - REMOVER QUANDO VOLTAR DOCKER
+# ============================================================
+# Cria engine global apenas se DATABASE_URL estiver definida
+if DATABASE_URL:
+    engine: Engine = create_engine(
+        DATABASE_URL,
+        pool_pre_ping=True,
+        pool_size=int(os.getenv("DB_POOL_SIZE", "10")),
+        max_overflow=int(os.getenv("DB_MAX_OVERFLOW", "20")),
+        future=True,
+    )
+    SessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine, future=True)
+else:
+    # Modo local: engine e SessionLocal são None
+    engine: Engine = None
+    SessionLocal = None
+    logger.warning("⚠️  Engine SQLAlchemy não inicializado (modo local)")
+# ============================================================
+# 🔴 FIM MODIFICAÇÃO LOCAL
+# ============================================================
 
 def get_engine() -> Engine:
     """Retorna o engine compartilhado."""
+    if engine is None:
+        raise RuntimeError("Database engine não está inicializado. Você está em modo LOCAL?")
     return engine
 
 def get_db_session():
     """Dependency para FastAPI."""
-    db = SessionLocal()
-    try:
-        yield db
-    finally:
-        db.close()
+    if SessionLocal is None:
+        raise RuntimeError("Database session não está disponível. Você está em modo LOCAL?")

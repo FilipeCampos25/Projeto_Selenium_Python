@@ -25,7 +25,20 @@ from backend.app.core.base_scraper import (
     ElementNotFoundError,
     ScraperError
 )
-from backend.app.db.repositories import ColetasRepository
+
+# ============================================================
+# 🔴 INÍCIO MODIFICAÇÃO LOCAL - REMOVER QUANDO VOLTAR DOCKER
+# ============================================================
+# Importar ColetasRepository de forma segura (pode falhar em modo local)
+try:
+    from backend.app.db.repositories import ColetasRepository
+    POSTGRES_AVAILABLE = True
+except Exception:
+    ColetasRepository = None
+    POSTGRES_AVAILABLE = False
+# ============================================================
+# 🔴 FIM MODIFICAÇÃO LOCAL
+# ============================================================
 
 logger = logging.getLogger(__name__)
 

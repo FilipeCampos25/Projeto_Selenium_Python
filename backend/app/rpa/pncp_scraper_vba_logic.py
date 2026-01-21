@@ -246,7 +246,7 @@ class PNCPScraperVBA:
         except: return None
 
     def _format_dfd(self, descricao: str) -> str:
-        """Emula Format(Left(SoNumero(desc), 7), '@@@\/@@@@') do VBA (Passo 3.1)."""
+        r"""Emula Format(Left(SoNumero(desc), 7), '@@@\/@@@@') do VBA (Passo 3.1)."""
         nums = so_numero(descricao)
         base = nums[:7]
         if len(base) >= 7:

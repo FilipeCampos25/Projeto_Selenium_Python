@@ -7,7 +7,21 @@ import logging
 import os
 from typing import Dict, Any, List
 from ..rpa.pgc_scraper_vba_logic import run_pgc_scraper_vba
-from ..db.repositories import ColetasRepository
+
+# ============================================================
+# 🔴 INÍCIO MODIFICAÇÃO LOCAL - REMOVER QUANDO VOLTAR DOCKER
+# ============================================================
+# Importar ColetasRepository de forma segura (pode falhar em modo local)
+try:
+    from ..db.repositories import ColetasRepository
+    POSTGRES_AVAILABLE = True
+except Exception:
+    ColetasRepository = None
+    POSTGRES_AVAILABLE = False
+# ============================================================
+# 🔴 FIM MODIFICAÇÃO LOCAL
+# ============================================================
+
 from .excel_persistence import ExcelPersistence
 
 logger = logging.getLogger(__name__)
