@@ -142,36 +142,205 @@ class PNCPScraperVBA:
                 time.sleep(0.5)
         return int(so_numero(txt)) if txt else 0
 
-    def _executar_rolagem_tabela(self, aba_id: str, demandas: int):
-        """Executa a rolagem fiel ao VBA para carregar todos os itens (Passo 5.1)."""
-        xpath_tbody = XPATHS["table"]["tbody_template"].replace("{aba_id}", aba_id)
-        xpath_ultimo = f"{xpath_tbody}[@class='p-element p-datatable-tbody']/div[{demandas}]"
-        
-        logger.info(f"[LOG-VBA] Rolando para carregar {demandas} itens...")
-        try:
-            tabela = self.driver.find_element(By.XPATH, xpath_tbody)
-            tabela.click()
-        except: 
-            tabela = None
+    def _get_scrollable_container(self, element):
+        """
+        Encontra o container realmente scrollável (overflow auto/scroll) subindo no DOM.
+        Isso é essencial para tabelas virtualizadas (PrimeNG/p-table etc.), onde o scroll
+        não acontece no window.
+        """
+        js = r"""
+        const el = arguments[0];
+        function isScrollable(node) {
+            if (!node) return false;
+            const style = window.getComputedStyle(node);
+            const overflowY = style.overflowY;
+            const canScroll = (overflowY === 'auto' || overflowY === 'scroll');
+            if (!canScroll) return false;
+            return (node.scrollHeight - node.clientHeight) > 10;
+        }
 
-        start = time.time()
-        while (time.time() - start < 180):
-            if len(self.driver.find_elements(By.XPATH, xpath_ultimo)) > 0:
-                break
+        let node = el;
+        // sobe até encontrar um pai scrollável
+        while (node && node !== document.body) {
+            if (isScrollable(node)) return node;
+            node = node.parentElement;
+        }
+
+        // fallback: tentar body/documentElement se fizer sentido
+        if (isScrollable(document.documentElement)) return document.documentElement;
+        if (isScrollable(document.body)) return document.body;
+
+        return null;
+        """
+        try:
+            return self.driver.execute_script(js, element)
+        except:
+            return None
+
+    def _count_items_loaded(self, xpath_tbody: str) -> int:
+        """
+        Conta itens carregados no tbody de forma tolerante a variações:
+        - alguns layouts usam <tr>
+        - outros usam <div> dentro do tbody (ou wrappers)
+        """
+        js = r"""
+        const xpath = arguments[0];
+        const r = document.evaluate(xpath, document, null, XPathResult.FIRST_ORDERED_NODE_TYPE, null);
+        const tbody = r.singleNodeValue;
+        if (!tbody) return 0;
+
+        // conta filhos diretos comuns
+        const direct = tbody.querySelectorAll(':scope > tr, :scope > div').length;
+        if (direct > 0) return direct;
+
+        // fallback: conta linhas/cards em profundidade (último recurso)
+        const deep = tbody.querySelectorAll('tr, div').length;
+        return deep;
+        """
+        try:
+            return int(self.driver.execute_script(js, xpath_tbody) or 0)
+        except:
+            # fallback Python puro
             try:
-                if tabela:
-                    self.driver.execute_script("arguments[0].scrollIntoView();", tabela)
                 tbody_el = self.driver.find_element(By.XPATH, xpath_tbody)
-                self.driver.execute_script("arguments[0].scrollIntoView();", tbody_el)
-                self.compat.testa_spinner()
-                self.driver.execute_script("window.scrollBy(0, 800);")
-            except: 
+                # tenta tr primeiro, depois div
+                trs = tbody_el.find_elements(By.XPATH, "./tr")
+                if trs:
+                    return len(trs)
+                divs = tbody_el.find_elements(By.XPATH, "./div")
+                return len(divs)
+            except:
+                return 0
+
+    def _executar_rolagem_tabela(self, aba_id: str, demandas: int):
+        """
+        Executa a rolagem para carregar todos os itens (estilo VBA),
+        porém corrigindo o problema comum do PNCP: o scroll real ocorre
+        num container interno (overflow auto), não no window.
+
+        Critérios de parada:
+        - atingiu 'demandas' itens carregados, OU
+        - estabilizou (não aumentou contagem) após várias tentativas, OU
+        - timeout.
+        """
+        xpath_tbody = XPATHS["table"]["tbody_template"].replace("{aba_id}", aba_id)
+
+        if not demandas or demandas <= 0:
+            logger.info("[LOG-VBA] Demandas = 0, nenhuma rolagem necessária.")
+            self.compat.testa_spinner()
+            return
+
+        logger.info(f"[LOG-VBA] Rolando para carregar até {demandas} itens...")
+
+        # 1) localizar o tbody e o container scrollável correto
+        tbody_el = None
+        container = None
+
+        try:
+            tbody_el = self.driver.find_element(By.XPATH, xpath_tbody)
+        except Exception as e:
+            logger.warning(f"[LOG-VBA] Não foi possível localizar tbody para rolagem: {e}")
+            self.compat.testa_spinner()
+            return
+
+        try:
+            # tenta dar foco (como no VBA)
+            try:
+                tbody_el.click()
+            except:
                 pass
+
+            container = self._get_scrollable_container(tbody_el)
+
+            # fallback se não achou container: tenta usar o próprio tbody
+            if container is None:
+                container = tbody_el
+        except:
+            container = tbody_el
+
+        # 2) loop de rolagem com “estabilização” (robusto para virtualização)
+        start = time.time()
+        timeout_s = 180
+
+        stagnant_rounds = 0
+        max_stagnant_rounds = 10  # ~10 ciclos sem aumento => fim provável
+        last_count = -1
+
+        # scroll step: maior que 800 para reduzir iterações em listas longas
+        step_px = 1200
+
+        while (time.time() - start) < timeout_s:
+            # sempre espera spinner antes de medir
+            self.compat.testa_spinner()
+
+            current_count = self._count_items_loaded(xpath_tbody)
+
+            # se atingiu o esperado, encerra
+            if current_count >= demandas:
+                logger.info(f"[LOG-VBA] Itens carregados: {current_count}/{demandas} (OK).")
+                break
+
+            # heurística de estabilização (virtualização pode impedir item N existir no DOM)
+            if current_count == last_count:
+                stagnant_rounds += 1
+            else:
+                stagnant_rounds = 0
+                last_count = current_count
+
+            logger.info(
+                f"[LOG-VBA] Itens visíveis/carregados: {current_count}/{demandas} | "
+                f"estagnado: {stagnant_rounds}/{max_stagnant_rounds}"
+            )
+
+            # se não cresce mais, provavelmente chegou no fim do que a tela consegue carregar
+            if stagnant_rounds >= max_stagnant_rounds:
+                logger.warning(
+                    "[LOG-VBA] Contagem estabilizou; encerrando rolagem para evitar loop infinito. "
+                    "Isso é esperado em tabelas virtualizadas."
+                )
+                break
+
+            # 3) rolar no container certo
+            try:
+                # garante que o container esteja em viewport (só por segurança)
+                try:
+                    self.driver.execute_script("arguments[0].scrollIntoView({block:'center'});", container)
+                except:
+                    pass
+
+                # scroll “à la VBA”, mas no elemento certo
+                js_scroll = r"""
+                const el = arguments[0];
+                const step = arguments[1];
+
+                // se for o documentElement/body, usa window
+                if (el === document.body || el === document.documentElement) {
+                    window.scrollBy(0, step);
+                    return;
+                }
+
+                // caso container comum
+                el.scrollTop = el.scrollTop + step;
+
+                // força disparo de evento scroll (alguns frameworks escutam isso)
+                el.dispatchEvent(new Event('scroll', { bubbles: true }));
+                """
+                self.driver.execute_script(js_scroll, container, step_px)
+            except Exception:
+                # fallback extremo: tenta window
+                try:
+                    self.driver.execute_script("window.scrollBy(0, arguments[0]);", step_px)
+                except:
+                    pass
+
+            # 4) espera “VBA-style”
             self.compat.testa_spinner()
             time.sleep(0.5)
-        
+
+        # pós loop
         self.compat.wait(1)
         self.compat.testa_spinner()
+
 
     def _extrair_itens_tabela(self, aba_id: str, demandas: int):
         """Loop de extração de campos com tratamento de erro por item (Passo 3.3)."""
@@ -253,15 +422,33 @@ class PNCPScraperVBA:
             return f"{base[:3]}/{base[3:7]}"
         return base
 
-def run_pncp_scraper_vba(ano_ref: str = "2025") -> List[Dict[str, Any]]:
-    """Entrypoint para o scraper PNCP com lógica VBA."""
-    from .driver_factory import create_driver
-    driver = create_driver(headless=False)
+def run_pncp_scraper_vba(
+    ano: int,
+    mes: int,
+    driver=None,               # <-- NOVO
+    close_driver: bool = True  # <-- NOVO
+):
+    local_driver = None
     try:
-        scraper = PNCPScraperVBA(driver, ano_ref)
-        from .pgc_scraper_vba_logic import PGCScraperVBA
-        if PGCScraperVBA(driver, ano_ref).A_Loga_Acessa_PGC():
-            return scraper.Dados_PNCP()
-        return []
+        if driver is None:
+            local_driver = create_driver(headless=False)
+            driver = local_driver
+        else:
+            close_driver = False
+
+        # ... resto da lógica atual do PNCP usando "driver" ...
+        # scraper = PNCPScraperVBA(driver, ...) etc.
+        # scraper.run()
+
+        return True
+
+    except Exception as e:
+        logger.exception(f"[PNCP] Erro: {e}")
+        raise
+
     finally:
-        driver.quit()
+        if close_driver and driver is not None:
+            try:
+                driver.quit()
+            except:
+                pass

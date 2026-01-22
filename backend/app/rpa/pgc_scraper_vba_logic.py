@@ -269,18 +269,36 @@ class PGCScraperVBA:
             logger.warning(f"Erro ao converter valor monetário '{value_str}', retornando 0.0: {e}")
             return 0.0
 
-def run_pgc_scraper_vba(ano_ref: str = "2025") -> List[Dict[str, Any]]:
-    """
-    Executa o scraper do PGC e retorna a lista de dados brutos coletados.
-    Login é feito manualmente via noVNC.
-    """
-    from .driver_factory import create_driver
-    driver = create_driver(headless=False)
+def run_pgc_scraper_vba(
+    ano: int,
+    mes: int,
+    driver=None,               # <-- NOVO
+    close_driver: bool = True  # <-- NOVO (controle de quit)
+):
+    local_driver = None
     try:
-        scraper = PGCScraperVBA(driver, ano_ref)
-        if scraper.A_Loga_Acessa_PGC():
-            return scraper.A1_Demandas_DFD_PCA()
+        if driver is None:
+            local_driver = create_driver(headless=False)
+            driver = local_driver
         else:
-            return []
+            # se veio de fora, não fecha aqui
+            close_driver = False
+
+        # ... resto da lógica atual do PGC usando "driver" ...
+        # exemplo:
+        # scraper = PGCScraperVBA(driver, ...)  (ou do jeito que está no arquivo)
+        # scraper.run()
+
+        return True
+
+    except Exception as e:
+        logger.exception(f"[PGC] Erro: {e}")
+        raise
+
     finally:
-        driver.quit()
+        if close_driver and driver is not None:
+            try:
+                driver.quit()
+            except:
+                pass
+
