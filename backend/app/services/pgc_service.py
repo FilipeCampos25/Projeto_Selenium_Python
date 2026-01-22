@@ -26,7 +26,7 @@ from .excel_persistence import ExcelPersistence
 
 logger = logging.getLogger(__name__)
 
-def coleta_pgc(ano_ref: str) -> List[Dict[str, Any]]:
+def coleta_pgc(ano_ref: str, driver=None, close_driver: bool = True) -> List[Dict[str, Any]]:
     """
     Orquestra a coleta do PGC e salva os dados no Excel.
     MODIFICADO PARA EXECUÇÃO LOCAL - Postgres desabilitado.
@@ -37,7 +37,7 @@ def coleta_pgc(ano_ref: str) -> List[Dict[str, Any]]:
     logger.info(f"[LOCAL] Iniciando coleta PGC para o ano {ano_ref}")
     
     # 1. Coletar dados via Scraper (Lógica VBA)
-    dados_brutos = run_pgc_scraper_vba(ano_ref=ano_ref)
+    dados_brutos = run_pgc_scraper_vba(ano_ref=ano_ref, driver=driver, close_driver=close_driver)
     
     if not dados_brutos:
         logger.warning("[LOCAL] Coleta PGC não retornou dados.")

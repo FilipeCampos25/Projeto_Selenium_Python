@@ -10,7 +10,9 @@ import os
 from typing import Dict, List, Optional, Any
 from selenium.webdriver.remote.webdriver import WebDriver
 from selenium.webdriver.common.by import By
+from selenium.common.exceptions import WebDriverException
 from .vba_compat import VBACompat, CheckpointFailureError
+from .driver_factory import create_driver
 
 logger = logging.getLogger(__name__)
 
@@ -27,8 +29,8 @@ class PGCScraperVBA:
         self.data_collected = []
 
     def A_Loga_Acessa_PGC(self) -> bool:
-        """Replica Sub A_Loga_Acessa_PGC() do VBA - Login manual via noVNC."""
-        logger.info("=== ABRINDO LOGIN NO PGC - AGUARDE LOGIN MANUAL VIA VNC ===")
+        """Replica Sub A_Loga_Acessa_PGC() do VBA - Login manual."""
+        logger.info("=== ABRINDO LOGIN NO PGC - AGUARDE LOGIN MANUAL ===")
         
         self.driver.get(XPATHS["login"]["url"])
         self.driver.maximize_window()
@@ -44,12 +46,26 @@ class PGCScraperVBA:
         # Scroll down (VBA)
         self.driver.execute_script("window.scrollTo(0, document.body.scrollHeight);")
         
-        # Aguarda login manual do usuário via noVNC
-        logger.info("Aguardando login manual... Abra o VNC em http://localhost:7900 e faça o login.")
+        # Aguarda login manual do usuário
+        selenium_mode = os.getenv("SELENIUM_MODE", "").lower()
+        if selenium_mode == "local":
+            logger.info("Aguardando login manual... Use o Chrome aberto pela automação e NÃO feche a janela.")
+        else:
+            logger.info("Aguardando login manual... Abra o VNC em http://localhost:7900 e faça o login.")
         try:
-            self.compat.wait_for_checkpoint(XPATHS["login"]["span_pgc_title"], "Planejamento e Gerenciamento de Contratações")
+            self.compat.wait_for_checkpoint(
+                XPATHS["login"]["span_pgc_title"],
+                "Planejamento e Gerenciamento de Contratações",
+                timeout=180
+            )
         except CheckpointFailureError:
             logger.error("Falha no checkpoint pós-login (Título PGC). Verifique se o login foi feito.")
+            return False
+        except WebDriverException as e:
+            logger.error(f"Conexão com o Chrome/Driver foi perdida: {e}")
+            return False
+        except Exception as e:
+            logger.error(f"Falha inesperada aguardando login manual: {e}")
             return False
         
         # Clica no PGC
@@ -270,26 +286,37 @@ class PGCScraperVBA:
             return 0.0
 
 def run_pgc_scraper_vba(
-    ano: int,
-    mes: int,
-    driver=None,               # <-- NOVO
-    close_driver: bool = True  # <-- NOVO (controle de quit)
+    ano_ref: Optional[str] = None,
+    ano: Optional[int] = None,
+    mes: Optional[int] = None,
+    driver=None,
+    close_driver: bool = True
 ):
+    """
+    Wrapper do scraper PGC para compatibilidade com o service.
+    Aceita `ano_ref` (preferencial) e mantém compatibilidade com `ano`.
+    """
     local_driver = None
     try:
+        if not ano_ref and ano is not None:
+            ano_ref = str(ano)
+        if not ano_ref:
+            raise ValueError("ano_ref é obrigatório.")
+
         if driver is None:
             local_driver = create_driver(headless=False)
             driver = local_driver
         else:
-            # se veio de fora, não fecha aqui
+            # Se veio de fora, não fecha aqui
             close_driver = False
 
-        # ... resto da lógica atual do PGC usando "driver" ...
-        # exemplo:
-        # scraper = PGCScraperVBA(driver, ...)  (ou do jeito que está no arquivo)
-        # scraper.run()
+        scraper = PGCScraperVBA(driver, ano_ref=ano_ref)
+        if not scraper.A_Loga_Acessa_PGC():
+            logger.error("[PGC] Login não concluído. Abortando coleta.")
+            return []
 
-        return True
+        dados = scraper.A1_Demandas_DFD_PCA()
+        return dados
 
     except Exception as e:
         logger.exception(f"[PGC] Erro: {e}")
@@ -299,6 +326,6 @@ def run_pgc_scraper_vba(
         if close_driver and driver is not None:
             try:
                 driver.quit()
-            except:
+            except Exception:
                 pass
 

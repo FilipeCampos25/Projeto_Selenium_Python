@@ -6,8 +6,10 @@ Router para orquestrar as coletas PGC e PNCP em sequência.
 from fastapi import APIRouter, BackgroundTasks, HTTPException
 from pydantic import BaseModel
 import logging
+import os
 from backend.app.services.pgc_service import coleta_pgc
 from backend.app.services.pncp_service import coleta_pncp
+from backend.app.rpa.driver_factory import create_driver
 
 logger = logging.getLogger(__name__)
 
@@ -22,11 +24,14 @@ def executar_coletas_sequenciais(ano_ref: int):
     """
     ano_str = str(ano_ref)
     
+    driver = None
     try:
+        headless = os.getenv("SELENIUM_HEADLESS", "false").lower() == "true"
+        driver = create_driver(headless=headless)
         # 1. Iniciar Coleta PGC
         logger.info(f"Iniciando sequência de coleta para o ano {ano_ref}")
         logger.info("Passo 1/2: Iniciando coleta PGC...")
-        coleta_pgc(ano_str)
+        coleta_pgc(ano_str, driver=driver, close_driver=False)
         logger.info("Passo 1/2: Coleta PGC finalizada com sucesso.")
         
         # 2. Iniciar Coleta PNCP (apenas após o término do PGC)
@@ -34,13 +39,22 @@ def executar_coletas_sequenciais(ano_ref: int):
         coleta_pncp(
             username="", 
             password="", 
-            ano_ref=ano_str
+            ano_ref=ano_str,
+            driver=driver,
+            close_driver=False,
+            reuse_driver=True
         )
         logger.info("Passo 2/2: Coleta PNCP finalizada com sucesso.")
         logger.info(f"Sequência de coleta para o ano {ano_ref} concluída.")
         
     except Exception as e:
         logger.error(f"Erro durante a sequência de coleta: {e}")
+    finally:
+        if driver is not None:
+            try:
+                driver.quit()
+            except Exception:
+                pass
 
 @router.post("/iniciar")
 async def iniciar_coleta_unificada(request: ColetaRequest, background_tasks: BackgroundTasks):

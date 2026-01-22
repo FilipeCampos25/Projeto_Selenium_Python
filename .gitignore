@@ -1,6 +1,10 @@
 .env
 .env.local
 venv/
-__pycache__/
 outputs_local/
 dados_locais_temp/
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+**/__pycache__/

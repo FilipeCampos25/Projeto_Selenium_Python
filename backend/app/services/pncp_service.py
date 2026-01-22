@@ -26,7 +26,17 @@ import os
 
 logger = logging.getLogger(__name__)
 
-def coleta_pncp(username: str, password: str, ano_ref: str, headless: bool = False, timeout: int = 20, use_mock: bool = None) -> Dict[str, Any]:
+def coleta_pncp(
+    username: str,
+    password: str,
+    ano_ref: str,
+    headless: bool = False,
+    timeout: int = 20,
+    use_mock: bool = None,
+    driver=None,
+    close_driver: bool = True,
+    reuse_driver: bool = False
+) -> Dict[str, Any]:
     """
     Orquestra a coleta do PNCP e persiste o resultado no Excel.
     MODIFICADO PARA EXECUÇÃO LOCAL - Postgres desabilitado.
@@ -37,7 +47,12 @@ def coleta_pncp(username: str, password: str, ano_ref: str, headless: bool = Fal
     logger.info(f"[LOCAL] INICIANDO COLETA PNCP - ANO {ano_ref}")
     
     # Execução real
-    dados_brutos = run_pncp_scraper_vba(ano_ref=ano_ref)
+    dados_brutos = run_pncp_scraper_vba(
+        ano_ref=ano_ref,
+        driver=driver,
+        close_driver=close_driver,
+        reuse_driver=reuse_driver
+    )
     
     resultado = {
         "status": "ok" if dados_brutos else "no_data",

@@ -14,6 +14,7 @@ from selenium.webdriver.remote.webdriver import WebDriver
 from selenium.webdriver.common.by import By
 from .vba_compat import VBACompat
 from ..api.schemas import PNCPItemSchema
+from .driver_factory import create_driver
 
 # Configuração de Logger para Auditoria (Fidelidade Passo 4.2)
 logger = logging.getLogger(__name__)
@@ -141,6 +142,76 @@ class PNCPScraperVBA:
             except:
                 time.sleep(0.5)
         return int(so_numero(txt)) if txt else 0
+
+    def _get_scrollable_container(self, element):
+        """
+        Encontra o container realmente scrollável (overflow auto/scroll) subindo no DOM.
+        Isso é essencial para tabelas virtualizadas (PrimeNG/p-table etc.), onde o scroll
+        não acontece no window.
+        """
+        js = r"""
+        const el = arguments[0];
+        function isScrollable(node) {
+            if (!node) return false;
+            const style = window.getComputedStyle(node);
+            const overflowY = style.overflowY;
+            const canScroll = (overflowY === 'auto' || overflowY === 'scroll');
+            if (!canScroll) return false;
+            return (node.scrollHeight - node.clientHeight) > 10;
+        }
+
+        let node = el;
+        // sobe até encontrar um pai scrollável
+        while (node && node !== document.body) {
+            if (isScrollable(node)) return node;
+            node = node.parentElement;
+        }
+
+        // fallback: tentar body/documentElement se fizer sentido
+        if (isScrollable(document.documentElement)) return document.documentElement;
+        if (isScrollable(document.body)) return document.body;
+
+        return null;
+        """
+        try:
+            return self.driver.execute_script(js, element)
+        except:
+            return None
+
+    def _count_items_loaded(self, xpath_tbody: str) -> int:
+        """
+        Conta itens carregados no tbody de forma tolerante a variações:
+        - alguns layouts usam <tr>
+        - outros usam <div> dentro do tbody (ou wrappers)
+        """
+        js = r"""
+        const xpath = arguments[0];
+        const r = document.evaluate(xpath, document, null, XPathResult.FIRST_ORDERED_NODE_TYPE, null);
+        const tbody = r.singleNodeValue;
+        if (!tbody) return 0;
+
+        // conta filhos diretos comuns
+        const direct = tbody.querySelectorAll(':scope > tr, :scope > div').length;
+        if (direct > 0) return direct;
+
+        // fallback: conta linhas/cards em profundidade (último recurso)
+        const deep = tbody.querySelectorAll('tr, div').length;
+        return deep;
+        """
+        try:
+            return int(self.driver.execute_script(js, xpath_tbody) or 0)
+        except:
+            # fallback Python puro
+            try:
+                tbody_el = self.driver.find_element(By.XPATH, xpath_tbody)
+                # tenta tr primeiro, depois div
+                trs = tbody_el.find_elements(By.XPATH, "./tr")
+                if trs:
+                    return len(trs)
+                divs = tbody_el.find_elements(By.XPATH, "./div")
+                return len(divs)
+            except:
+                return 0
 
     def _get_scrollable_container(self, element):
         """
@@ -341,7 +412,6 @@ class PNCPScraperVBA:
         self.compat.wait(1)
         self.compat.testa_spinner()
 
-
     def _extrair_itens_tabela(self, aba_id: str, demandas: int):
         """Loop de extração de campos com tratamento de erro por item (Passo 3.3)."""
         f = XPATHS["fields"]
@@ -423,32 +493,67 @@ class PNCPScraperVBA:
         return base
 
 def run_pncp_scraper_vba(
-    ano: int,
-    mes: int,
-    driver=None,               # <-- NOVO
-    close_driver: bool = True  # <-- NOVO
+    ano_ref: Optional[str] = None,
+    ano: Optional[int] = None,
+    mes: Optional[int] = None,
+    driver=None,
+    close_driver: bool = True,
+    reuse_driver: bool = False
 ):
+    """
+    Wrapper do scraper PNCP para compatibilidade com o service.
+    Aceita `ano_ref` (preferencial) e mantém compatibilidade com `ano`.
+    """
     local_driver = None
+    helper = None
     try:
+        if not ano_ref and ano is not None:
+            ano_ref = str(ano)
+        if not ano_ref:
+            raise ValueError("ano_ref é obrigatório.")
+
         if driver is None:
             local_driver = create_driver(headless=False)
             driver = local_driver
         else:
             close_driver = False
 
-        # ... resto da lógica atual do PNCP usando "driver" ...
-        # scraper = PNCPScraperVBA(driver, ...) etc.
-        # scraper.run()
+        # Login manual + contexto inicial usando helpers já existentes
+        from .pncp_scraper import load_selectors, substitute_placeholders, PNCPScraperRefactored
 
-        return True
+        selectors = load_selectors()
+        try:
+            selectors = substitute_placeholders(selectors, {"ano_ref": ano_ref})
+        except Exception:
+            pass
+
+        login_url = selectors.get("login_url")
+        if login_url and not reuse_driver:
+            driver.get(login_url)
+
+        helper = PNCPScraperRefactored(driver=driver, selectors=selectors, headless=False)
+        if not reuse_driver:
+            helper.wait_manual_login()
+        helper.apply_login_context(ano_ref)
+
+        pncp_vba = PNCPScraperVBA(driver, ano_ref)
+        dados = pncp_vba.Dados_PNCP()
+        return dados
 
     except Exception as e:
         logger.exception(f"[PNCP] Erro: {e}")
         raise
 
     finally:
+        if helper is not None and close_driver:
+            try:
+                helper.quit()
+            except Exception:
+                pass
+            # helper.quit() já encerra o driver
+            driver = None
         if close_driver and driver is not None:
             try:
                 driver.quit()
-            except:
+            except Exception:
                 pass
