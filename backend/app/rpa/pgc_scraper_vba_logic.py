@@ -12,7 +12,8 @@ from selenium.webdriver.remote.webdriver import WebDriver
 from selenium.webdriver.common.by import By
 from selenium.common.exceptions import WebDriverException
 from .vba_compat import VBACompat, CheckpointFailureError
-from .driver_factory import create_driver
+from .driver_factory import create_attached_driver, create_driver
+from .chrome_attach import start_manual_login_session, wait_until_logged_in
 
 logger = logging.getLogger(__name__)
 
@@ -29,64 +30,58 @@ class PGCScraperVBA:
         self.data_collected = []
 
     def A_Loga_Acessa_PGC(self) -> bool:
-        """Replica Sub A_Loga_Acessa_PGC() do VBA - Login manual."""
-        logger.info("=== ABRINDO LOGIN NO PGC - AGUARDE LOGIN MANUAL ===")
-        
-        self.driver.get(XPATHS["login"]["url"])
-        self.driver.maximize_window()
-        
-        # Checkpoint: Portal aberto
-        try:
-            self.compat.wait_for_checkpoint(XPATHS["login"]["btn_expand_governo"])
-        except CheckpointFailureError:
-            logger.error("Falha no checkpoint inicial (btn_expand_governo). Abortando.")
-            return False
-        self.compat.safe_click(XPATHS["login"]["btn_expand_governo"])
-        
-        # Scroll down (VBA)
-        self.driver.execute_script("window.scrollTo(0, document.body.scrollHeight);")
-        
-        # Aguarda login manual do usuário
-        selenium_mode = os.getenv("SELENIUM_MODE", "").lower()
-        if selenium_mode == "local":
-            logger.info("Aguardando login manual... Use o Chrome aberto pela automação e NÃO feche a janela.")
-        else:
-            logger.info("Aguardando login manual... Abra o VNC em http://localhost:7900 e faça o login.")
+        """
+        Replica o "ponto de transição" do VBA antigo:
+        - Aqui assumimos que o usuário JÁ fez o login manualmente no Chrome.
+        - O WebDriver já está anexado na instância (debuggerAddress).
+        - Portanto, não abrimos login e não interferimos no CAPTCHA/IdGov durante o login.
+
+        O que fazemos:
+        1) Validar que estamos na página pós-login (portal que lista o PGC).
+        2) Clicar no card/atalho "PGC".
+        3) Trocar para a nova janela/aba do PGC (como no VBA).
+        """
+        logger.info("=== PONTO DE TRANSIÇÃO (VBA) - Selenium assume APÓS login manual ===")
+
+        # Checkpoint: portal pós-login carregado (equivalente ao VBA checando URL via /json)
         try:
             self.compat.wait_for_checkpoint(
                 XPATHS["login"]["span_pgc_title"],
                 "Planejamento e Gerenciamento de Contratações",
-                timeout=180
+                timeout=45
             )
         except CheckpointFailureError:
-            logger.error("Falha no checkpoint pós-login (Título PGC). Verifique se o login foi feito.")
+            logger.error(
+                "Não detectei a tela pós-login do portal. "
+                "Garanta que o login manual foi concluído antes de iniciar a coleta."
+            )
             return False
         except WebDriverException as e:
             logger.error(f"Conexão com o Chrome/Driver foi perdida: {e}")
             return False
         except Exception as e:
-            logger.error(f"Falha inesperada aguardando login manual: {e}")
+            logger.error(f"Falha inesperada validando pós-login: {e}")
             return False
-        
+
         # Clica no PGC
         self.compat.safe_click(XPATHS["login"]["div_pgc_access"])
-        
-        # Troca de janela (Item 7)
+
+        # Troca de janela (Item 7 - fiel ao VBA)
         original_handles = set(self.driver.window_handles)
         if not self.compat.wait_for_new_window(original_handles):
             logger.error("Falha ao esperar pela nova janela do PGC.")
             return False
-            
+
         for handle in self.driver.window_handles:
             self.driver.switch_to.window(handle)
-            if XPATHS["login"]["window_title"] in self.driver.title:
+            if XPATHS["login"]["window_title"] in (self.driver.title or ""):
                 self.compat.last_handle = handle
                 break
         else:
             logger.error("Não encontrou a janela do PGC.")
             return False
-        
-        logger.info("Login manual concluído e PGC acessado com sucesso.")
+
+        logger.info("PGC acessado com sucesso (Selenium anexado pós-login).")
         return True
 
     def A1_Demandas_DFD_PCA(self) -> List[Dict[str, Any]]:
@@ -123,167 +118,106 @@ class PGCScraperVBA:
         
         # Primeiro, calcula o total de páginas no VBA original (contando até o final)
         posM = self._count_total_pages()
-        logger.info(f"Total de páginas detectadas: {posM}")
         
-        # Antes de iniciar a leitura, aguarda estabilidade do DOM/tabela
-        if not self._wait_table_stable(max_checks=6, interval=0.5): # .
-            logger.warning(f"Timeout aguardando estabilidade do DOM na página {pos}") # .
-
-        while pos <= posM:
-            logger.info(f"Coletando página {pos} de {posM}...")
-            page_data = self._read_current_table()
+        logger.info(f"Total de páginas detectadas (VBA): {posM}")
+        
+        # Volta para a primeira página (VBA: SelecionarPrimeiraPagina)
+        self._go_to_first_page()
+        
+        while True:
+            logger.info(f"Coletando página {pos}/{posM}")
+            page_data = self._collect_current_page_rows()
             all_data.extend(page_data)
-
-            # Log detalhado por página: quantidade e conteúdo dos itens coletados
-            try:
-                logger.info(f"Página {pos}: coletados {len(page_data)} itens")
-                logger.info(f"Página {pos} - itens: {json.dumps(page_data, ensure_ascii=False)}")
-            except Exception:
-                logger.info(f"Página {pos}: erro ao serializar itens para log")
             
-            if pos < posM:
-                if not self._go_to_next_page():
-                    logger.warning(f"Parado na página {pos}. Botão próxima não disponível ou erro na navegação.")
-                    break
+            if not self._has_next_page():
+                break
+            
+            self._go_next_page()
             pos += 1
-            
-        self.data_collected = all_data
+        
+        logger.info(f"Coleta concluída. Total de registros: {len(all_data)}")
         return all_data
 
     def _count_total_pages(self) -> int:
-        """
-        Adaptação fiel do VBA:
-        - Vai direto para a última página (>>)
-        - Descobre o número real da última página pelos botões numéricos
-        - Volta para a primeira página (<<)
-        """
+        """Conta páginas totais como no VBA original."""
+        count = 1
+        # Vai avançando até não existir mais "próxima página"
+        while self._has_next_page():
+            self._go_next_page()
+            count += 1
+        return count
 
-        total_paginas = 1
-
-        try:
-            # 1. Ir direto para a última página (>>)
-            self.compat.safe_click(XPATHS["pagination"]["btn_last"])
-            self.compat.testa_spinner()
-
-            # 2. Ler os botões numéricos (1,2,3,...)
-            btns = self.driver.find_elements(
-                By.XPATH,
-                XPATHS["pagination"]["btns_pages"]
-            )
-
-            numeros = [
-                int(b.text)
-                for b in btns
-                if b.text and b.text.isdigit()
-            ]
-
-            if numeros:
-                total_paginas = max(numeros)
-        except Exception as e:
-            logger.warning(f"Erro ao descobrir total de páginas: {e}")
-
-        finally:
-            # 3. Voltar para a primeira página (<<)
+    def _go_to_first_page(self) -> None:
+        """Volta para primeira página (equivalente VBA)."""
+        # Implementação: clicar no botão "primeira página" se existir, senão usar setinha/atalho.
+        first_xpath = XPATHS["pagination"].get("btn_first")
+        if first_xpath:
             try:
-                self.compat.safe_click(XPATHS["pagination"]["btn_first"])
-                # self.compat.testa_spinner()
-            except Exception as e:
-               logger.warning(f"Erro ao voltar para página 1: {e}")
-
-        return total_paginas
-
-    def _read_current_table(self) -> List[Dict[str, Any]]:
-        """Lê a tabela atual validando cada linha (Item 8)."""
-        rows_data = []
-        rows = self.driver.find_elements(By.XPATH, XPATHS["table"]["rows"])
-        
-        for row in rows:
-            try:
-                cols = row.find_elements(By.XPATH, "./td")
-                if len(cols) < 10: continue
-                
-                # Índices baseados no pgc_xpaths.json (mapeados do VBA)
-                idx = XPATHS["table_columns"]
-                item = {
-                    "dfd": cols[idx["index_dfd"]-1].text.strip(),
-                    "requisitante": cols[idx["index_requisitante"]-1].text.strip(),
-                    "descricao": cols[idx["index_descricao"]-1].text.strip(),
-                    "valor": self._parse_currency(cols[idx["index_valor"]-1].text.strip()),
-                    "situacao": cols[idx["index_situacao"]-1].text.strip(),
-                    "coletado_em": time.strftime("%Y-%m-%d %H:%M:%S")
-                }
-                rows_data.append(item)
-            except Exception as e:
-                logger.warning(f"Erro ao ler linha da tabela: {e}")
-                
-        return rows_data
-
-    # Espera a tabela estabilizar antes de ler
-    def _wait_table_stable(self, max_checks: int = 10, interval: float = 0.5) -> bool:
-        """
-        Aguarda a tabela estabilizar antes de iniciar a leitura da página.
-        Estratégia: verifica o número de linhas em duas leituras consecutivas
-        separadas por `interval`. Também chama `testa_spinner` para garantir
-        que o carregamento visual terminou.
-        Retorna True se a tabela parecer estável (linhas > 0 e mesmo count duas vezes),
-        ou False se timeout.
-        """
-        last_count = -1
-        checks = 0
-        while checks < max_checks:
-            try:
+                self.compat.safe_click(first_xpath)
                 self.compat.testa_spinner()
-                rows = self.driver.find_elements(By.XPATH, XPATHS["table"]["rows"])
-                count = len(rows)
-                if count > 0 and count == last_count:
-                    return True
-                last_count = count
-            except Exception as e:
-                logger.debug(f"_wait_table_stable check error: {e}")
-            time.sleep(interval)
-            checks += 1
+                return
+            except Exception:
+                pass
 
-        # Última tentativa: ver se há pelo menos alguma linha
+        # fallback: tenta voltar várias páginas
+        prev_xpath = XPATHS["pagination"].get("btn_prev")
+        if prev_xpath:
+            for _ in range(10):
+                if not self._has_prev_page():
+                    break
+                self.compat.safe_click(prev_xpath)
+                self.compat.testa_spinner()
+
+    def _has_prev_page(self) -> bool:
+        """Verifica existência da página anterior."""
+        prev_xpath = XPATHS["pagination"].get("btn_prev")
+        if not prev_xpath:
+            return False
         try:
-            rows = self.driver.find_elements(By.XPATH, XPATHS["table"]["rows"])
-            return len(rows) > 0
+            el = self.driver.find_element(By.XPATH, prev_xpath)
+            return el.is_enabled()
         except Exception:
             return False
 
-    def _go_to_next_page(self) -> bool:
-        """
-        Clica no botão próxima e aguarda a tabela recarregar.
-        Replica o comportamento do VBA: ClicarProximaPagina + EsperarCarregar.
-        """
+    def _has_next_page(self) -> bool:
+        """Verifica se existe próxima página."""
+        next_xpath = XPATHS["pagination"].get("btn_next")
+        if not next_xpath:
+            return False
         try:
-            # Clica próxima
-            if not self.compat.safe_click(XPATHS["pagination"]["btn_next"]):
-                logger.error("Falha ao clicar botão próxima.")
-                return False
-            
-            # Aguarda a tabela recarregar (checkpoint na tabela)
-            try:
-                self.compat.wait_for_checkpoint(XPATHS["table"]["rows"], timeout=15)
-            except CheckpointFailureError:
-                logger.error("Falha ao aguardar recarga da tabela após clique próxima.")
-                return False
-            
-            # Aguarda spinner desaparecer
-            self.compat.testa_spinner()
-            return True
-            
-        except Exception as e:
-            logger.error(f"Erro inesperado ao avançar para próxima página: {e}")
+            el = self.driver.find_element(By.XPATH, next_xpath)
+            return el.is_enabled()
+        except Exception:
             return False
 
-    def _parse_currency(self, value_str: str) -> float:
-        try:
-            # Remove "R$", pontos de milhar e troca vírgula por ponto
-            clean_value = value_str.replace("R$", "").replace(".", "").replace(",", ".").strip()
-            return float(clean_value)
-        except Exception as e:
-            logger.warning(f"Erro ao converter valor monetário '{value_str}', retornando 0.0: {e}")
-            return 0.0
+    def _go_next_page(self) -> None:
+        """Avança para próxima página e aguarda carregamento."""
+        next_xpath = XPATHS["pagination"].get("btn_next")
+        if not next_xpath:
+            raise RuntimeError("XPath de próxima página não configurado em pgc_xpaths.json")
+        self.compat.safe_click(next_xpath)
+        self.compat.testa_spinner()
+
+    def _collect_current_page_rows(self) -> List[Dict[str, Any]]:
+        """Coleta linhas da página atual."""
+        rows_xpath = XPATHS["table"]["rows"]
+        rows = self.driver.find_elements(By.XPATH, rows_xpath)
+        data = []
+        for r in rows:
+            try:
+                cols = r.find_elements(By.TAG_NAME, "td")
+                if not cols:
+                    continue
+                row_dict = {
+                    "DFD": cols[0].text.strip() if len(cols) > 0 else "",
+                    "Requisitante": cols[1].text.strip() if len(cols) > 1 else "",
+                    "Valor": cols[2].text.strip() if len(cols) > 2 else "",
+                }
+                data.append(row_dict)
+            except Exception:
+                continue
+        return data
+
 
 def run_pgc_scraper_vba(
     ano_ref: Optional[str] = None,
@@ -294,7 +228,17 @@ def run_pgc_scraper_vba(
 ):
     """
     Wrapper do scraper PGC para compatibilidade com o service.
-    Aceita `ano_ref` (preferencial) e mantém compatibilidade com `ano`.
+
+    MUDANÇA (fidelidade ao VBA antigo):
+    - Se `driver` NÃO for fornecido, NÃO criamos Selenium de cara.
+      Em vez disso:
+        1) Abrimos o Chrome fora do Selenium com remote debugging.
+        2) Usuário faz login manual.
+        3) Detectamos pós-login via /json.
+        4) Só então anexamos o Selenium (create_attached_driver).
+
+    - Se `driver` for fornecido (ex: coleta unificada), assumimos que o driver
+      já está logado e pronto (Selenium já anexado ou já controlando).
     """
     local_driver = None
     try:
@@ -304,7 +248,20 @@ def run_pgc_scraper_vba(
             raise ValueError("ano_ref é obrigatório.")
 
         if driver is None:
-            local_driver = create_driver(headless=False)
+            # 1) Abrir Chrome fora do Selenium (equivalente ao VBA)
+            start_url = os.getenv("PGC_URL") or XPATHS["login"]["url"]
+            session = start_manual_login_session(start_url=start_url)
+
+            # 2) Usuário faz login manual e nós monitoramos a URL via DevTools (/json)
+            #    (equivalente ao loop do VBA lendo "urlAtual")
+            wait_until_logged_in(
+                port=session.port,
+                timeout_s=int(os.getenv("LOGIN_TIMEOUT_S", "600"))
+            )
+
+            # 3) Somente agora anexamos o Selenium na instância existente
+            debugger_address = f"127.0.0.1:{session.port}"
+            local_driver = create_attached_driver(debugger_address=debugger_address, headless=False)
             driver = local_driver
         else:
             # Se veio de fora, não fecha aqui
@@ -312,7 +269,7 @@ def run_pgc_scraper_vba(
 
         scraper = PGCScraperVBA(driver, ano_ref=ano_ref)
         if not scraper.A_Loga_Acessa_PGC():
-            logger.error("[PGC] Login não concluído. Abortando coleta.")
+            logger.error("[PGC] Pós-login não validado / PGC não acessado. Abortando coleta.")
             return []
 
         dados = scraper.A1_Demandas_DFD_PCA()
@@ -328,4 +285,3 @@ def run_pgc_scraper_vba(
                 driver.quit()
             except Exception:
                 pass
-
