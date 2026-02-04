@@ -19,13 +19,45 @@ services:
     networks:
       - projnet
 
+  # ---------------------------------------------------------
+  # OPÇÃO 1 (docker_attach): Chrome "puro" (SEM WebDriver)
+  # - Usuário abre noVNC e faz login manual
+  # - Backend monitora DevTools /json e só depois anexa Selenium
+  # ---------------------------------------------------------
+  chrome-login:
+    build:
+      context: .
+      dockerfile: chrome-login.Dockerfile
+    container_name: chrome-login
+    shm_size: 2gb
+    ports:
+      - "7901:7900"   # noVNC do chrome-login (usei 7901 pra não conflitar com selenium)
+      # ⚠️ NÃO exponha 9222 publicamente em produção (DevTools é poderoso).
+      # - "9222:9222"
+    environment:
+      CHROME_DEBUG_PORT: "9222"
+      VNC_PORT: "5900"
+      NOVNC_PORT: "7900"
+      START_URL: ${PGC_URL}
+    volumes:
+      - chrome_profile:/profile
+    healthcheck:
+      test: ["CMD-SHELL", "curl -fsS http://localhost:9222/json/version >/dev/null || exit 1"]
+      interval: 10s
+      timeout: 5s
+      retries: 20
+      start_period: 20s
+    networks:
+      - projnet
+
+  # Mantido como fallback/legado (você pode até remover depois)
   selenium:
     image: selenium/standalone-chrome:4.21.0
     container_name: selenium-chrome
     shm_size: 2gb
     ports:
       - "4444:4444"   # Selenium WebDriver
-      - "7900:7900"   # noVNC
+      - "7900:7900"   # noVNC (selenium)
     environment:
       SE_VNC_NO_PASSWORD: "true"
       SE_NODE_MAX_SESSIONS: 1
@@ -54,8 +86,22 @@ services:
       - DEBUGPY=1
       - DEBUG_WAIT_FOR_CLIENT=true
       - PYTHONUNBUFFERED=1
-      - SELENIUM_MODE=remote
-      - SELENIUM_REMOTE_URL=http://selenium:4444/wd/hub
+
+      # ---------------------------------------------------------
+      # ATIVAÇÃO DO MODELO "VBA-LIKE" NO DOCKER (Opção 1)
+      # ---------------------------------------------------------
+      - LOGIN_MODE=docker_attach
+      - CHROME_DEBUG_HOST=chrome-login
+      - CHROME_DEBUG_PORT=9222
+      - CHROME_VNC_URL=http://localhost:7901
+      - LOGIN_TIMEOUT_S=600
+
+      # Evita cair no Grid remoto por acidente
+      - SELENIUM_MODE=local
+
+      # Se você quiser usar o Grid em outro modo:
+      # - SELENIUM_MODE=remote
+      # - SELENIUM_REMOTE_URL=http://selenium:4444/wd/hub
 
     ports:
       - "8000:8000"
@@ -68,6 +114,8 @@ services:
 
     depends_on:
       db:
+        condition: service_healthy
+      chrome-login:
         condition: service_healthy
       selenium:
         condition: service_healthy
@@ -85,6 +133,7 @@ services:
 volumes:
   pg_data:
   outputs:
+  chrome_profile:
 
 networks:
   projnet:

@@ -1,13 +1,15 @@
 """
-Arquivo: coleta_unificada.py
-Router para orquestrar as coletas PGC e PNCP em sequência.
+coleta_unificada.py
+===================
+Implementa a Opção 1 (Docker attach pós-login) mantendo o front-end igual:
 
-MUDANÇA PRINCIPAL (fidelidade ao VBA antigo):
-- Não criamos WebDriver no início.
-- Abrimos o Chrome fora do Selenium, usuário faz login manual, monitoramos /json.
-- Só então anexamos o Selenium e iniciamos a coleta PGC -> PNCP reaproveitando o driver.
+- Usuário clica "iniciar coleta" e informa ano.
+- Backend prepara o fluxo e retorna mensagem para o usuário abrir o noVNC e logar.
+- Backend monitora /json do DevTools até detectar pós-login (igual VBA).
+- Só então anexa Selenium e inicia PGC -> PNCP reaproveitando o driver.
 
-Isso garante que o Selenium "assume" somente após o login manual, exatamente como o VBA.
+Importante:
+- Essa abordagem evita webdriver DURANTE o login, reduzindo chance de CAPTCHA.
 """
 
 from __future__ import annotations
@@ -20,7 +22,7 @@ from pydantic import BaseModel
 
 from backend.app.services.pgc_service import coleta_pgc
 from backend.app.services.pncp_service import coleta_pncp
-from backend.app.rpa.chrome_attach import start_manual_login_session, wait_until_logged_in
+from backend.app.rpa.chrome_attach import wait_until_logged_in, open_url_via_devtools
 from backend.app.rpa.driver_factory import create_attached_driver
 
 logger = logging.getLogger(__name__)
@@ -34,39 +36,48 @@ class ColetaRequest(BaseModel):
 
 def executar_coletas_sequenciais(ano_ref: int) -> None:
     """
-    Executa a coleta do PGC e, após a finalização, executa a do PNCP.
-
-    Fluxo:
-    1) Abre Chrome fora do Selenium na URL de login (PGC_URL).
-    2) Usuário loga manualmente.
-    3) Detecta pós-login via DevTools (/json).
-    4) Anexa Selenium e roda PGC, depois PNCP com reuse_driver=True.
+    Opção 1 (docker_attach):
+    - Chrome está rodando no serviço "chrome-login" SEM WebDriver.
+    - Usuário loga via noVNC.
+    - Backend detecta pós-login via DevTools (/json) e anexa Selenium depois.
     """
     ano_str = str(ano_ref)
 
     driver = None
     try:
-        # 1) Abrir Chrome fora do Selenium (VBA-style)
-        start_url = os.getenv("PGC_URL") or "http://www.comprasnet.gov.br/seguro/loginPortal.asp"
-        session = start_manual_login_session(start_url=start_url)
+        login_mode = os.getenv("LOGIN_MODE", "local_attach").lower()
+        start_url = os.getenv("PGC_URL", "https://www.comprasnet.gov.br/seguro/loginPortalUASG.asp")
 
-        # 2) Aguardar login manual (monitorando /json)
+        if login_mode != "docker_attach":
+            raise RuntimeError(
+                "Esta rota foi ajustada para LOGIN_MODE=docker_attach (Opção 1). "
+                "Defina LOGIN_MODE no .env do servidor."
+            )
+
+        host = os.getenv("CHROME_DEBUG_HOST", "chrome-login")
+        port = int(os.getenv("CHROME_DEBUG_PORT", "9222"))
+
+        # (Opcional) manda abrir a URL de login na instância do Chrome do container
+        open_url_via_devtools(host, port, start_url)
+
+        # Aguarda login manual via noVNC detectando mudança de URL em /json (VBA-like)
         wait_until_logged_in(
-            port=session.port,
-            timeout_s=int(os.getenv("LOGIN_TIMEOUT_S", "600"))
+            host=host,
+            port=port,
+            timeout_s=int(os.getenv("LOGIN_TIMEOUT_S", "600")),
         )
 
-        # 3) Anexar Selenium SOMENTE AGORA
-        debugger_address = f"127.0.0.1:{session.port}"
-        driver = create_attached_driver(debugger_address=debugger_address, headless=False)
+        # Após login: Selenium "assume"
+        debugger_address = f"{host}:{port}"
+        driver = create_attached_driver(debugger_address=debugger_address)
 
-        # 4) Coleta PGC
+        # Coleta PGC
         logger.info(f"Iniciando sequência de coleta para o ano {ano_ref}")
         logger.info("Passo 1/2: Iniciando coleta PGC...")
         coleta_pgc(ano_str, driver=driver, close_driver=False)
         logger.info("Passo 1/2: Coleta PGC finalizada com sucesso.")
 
-        # 5) Coleta PNCP (reutilizando o mesmo driver)
+        # Coleta PNCP reaproveitando driver
         logger.info("Passo 2/2: Iniciando coleta PNCP...")
         coleta_pncp(
             username="",
@@ -74,7 +85,7 @@ def executar_coletas_sequenciais(ano_ref: int) -> None:
             ano_ref=ano_str,
             driver=driver,
             close_driver=False,
-            reuse_driver=True
+            reuse_driver=True,
         )
         logger.info("Passo 2/2: Coleta PNCP finalizada com sucesso.")
         logger.info(f"Sequência de coleta para o ano {ano_ref} concluída.")
@@ -93,20 +104,27 @@ def executar_coletas_sequenciais(ano_ref: int) -> None:
 @router.post("/iniciar")
 async def iniciar_coleta_unificada(request: ColetaRequest, background_tasks: BackgroundTasks):
     """
-    Endpoint para disparar as coletas PGC e PNCP em sequência via BackgroundTasks.
+    Dispara em background.
+
+    Resposta orienta o usuário a:
+    - abrir o noVNC do serviço chrome-login
+    - fazer login manual
+    - manter a janela aberta
     """
     try:
         background_tasks.add_task(executar_coletas_sequenciais, request.ano_ref)
 
-        return {
-            "status": "started",
-            "ano_ref": request.ano_ref,
-            "message": (
-                "Sequência de coleta (PGC -> PNCP) iniciada. "
-                "⚠️ Abra o Chrome que será iniciado automaticamente, faça o login manual e NÃO feche a janela. "
-                "Após o login, o Selenium irá anexar e continuar a coleta."
-            ),
-        }
+        vnc_url = os.getenv("CHROME_VNC_URL", "")  # opcional: para o front mostrar link
+
+        msg = (
+            "Sequência de coleta (PGC -> PNCP) iniciada em modo docker_attach. "
+            "Faça o login MANUALMENTE no Chrome do servidor (via noVNC). "
+            "Após o login, o Selenium irá anexar e continuar a coleta."
+        )
+        if vnc_url:
+            msg += f" noVNC: {vnc_url}"
+
+        return {"status": "started", "ano_ref": request.ano_ref, "message": msg}
 
     except Exception as e:
         logger.error(f"Erro ao iniciar coleta unificada: {e}")

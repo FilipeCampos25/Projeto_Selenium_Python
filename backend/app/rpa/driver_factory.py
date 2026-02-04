@@ -1,20 +1,13 @@
 """
 driver_factory.py
-Factory para criação de WebDriver.
+=================
+Adaptação para a Opção 1 (Docker com Chrome externo sem WebDriver):
+- Cria WebDriver ANEXADO (attach) em um Chrome que já está rodando em outro serviço/container
+  com remote debugging.
 
-Este projeto suporta DOIS modos de uso:
-
-1) Driver "normal" (Selenium cria o Chrome):
-   - Usado quando queremos Selenium controlando tudo desde o início.
-
-2) Driver "attach" (fidelidade ao VBA antigo):
-   - Primeiro abrimos o Chrome fora do Selenium com --remote-debugging-port.
-   - Usuário faz login manual.
-   - Só depois criamos o WebDriver anexando na instância existente via debuggerAddress.
-
-Observação:
-- O modo attach é pensado para EXECUÇÃO LOCAL (Chrome instalado na máquina).
-- Em Docker/Remote Selenium, "attach" normalmente não é aplicável sem arquitetura extra.
+Ponto chave:
+- debuggerAddress precisa ser alcançável pelo chromedriver que está executando aqui.
+  Em Docker: normalmente "chrome-login:9222" (nome do serviço na rede docker).
 """
 
 from __future__ import annotations
@@ -31,7 +24,6 @@ from selenium.webdriver.chrome.service import Service
 from selenium.webdriver.remote.webdriver import WebDriver
 
 try:
-    # webdriver-manager é útil em modo local; em ambientes sem internet, tentamos cache primeiro.
     from webdriver_manager.chrome import ChromeDriverManager
 except Exception:  # pragma: no cover
     ChromeDriverManager = None  # type: ignore
@@ -39,64 +31,50 @@ except Exception:  # pragma: no cover
 logger = logging.getLogger(__name__)
 
 
-# ---------------------------------------------------------------------------
-# Configurações de robustez (equivalente ao "driver settings" do VBA)
-# ---------------------------------------------------------------------------
-
 def _apply_vba_driver_settings(driver: WebDriver) -> None:
-    """
-    Aplica configurações de robustez exigidas pelo projeto (equivalente à disciplina do VBA).
-    """
     driver.set_page_load_timeout(300)
     driver.set_script_timeout(120)
     try:
         driver.maximize_window()
     except Exception:
         pass
-
-    # Garantir contexto base
     try:
         driver.switch_to.default_content()
     except Exception:
         pass
 
 
-# ---------------------------------------------------------------------------
-# Descoberta do ChromeDriver (fidelidade: "chromedriverPath" do VBA)
-# ---------------------------------------------------------------------------
-
-def _find_chromedriver_in_cache_windows() -> Optional[str]:
+def _find_chromedriver_in_cache() -> Optional[str]:
     """
-    Procura por ChromeDriver já baixado no cache do webdriver-manager (Windows).
-    Exemplo:
-      C:/Users/<user>/.wdm/drivers/chromedriver/win64/<versao>/chromedriver.exe
+    Procura chromedriver já baixado no cache do webdriver-manager.
+    Útil para ambientes sem internet.
     """
-    wdm_cache = os.path.expanduser("~/.wdm/drivers/chromedriver/win64")
-    if not os.path.exists(wdm_cache):
-        return None
+    # Windows cache
+    wdm_cache_win = os.path.expanduser("~/.wdm/drivers/chromedriver/win64")
+    if os.path.exists(wdm_cache_win):
+        paths = glob.glob(os.path.join(wdm_cache_win, "*/chromedriver.exe"))
+        if paths:
+            return paths[0]
 
-    paths = glob.glob(os.path.join(wdm_cache, "*/chromedriver.exe"))
-    if paths:
-        # pega o primeiro encontrado (suficiente para o cenário local)
-        return paths[0]
+    # Linux cache
+    wdm_cache_linux = os.path.expanduser("~/.wdm/drivers/chromedriver/linux64")
+    if os.path.exists(wdm_cache_linux):
+        paths = glob.glob(os.path.join(wdm_cache_linux, "*/chromedriver"))
+        if paths:
+            return paths[0]
+
     return None
 
 
 def _build_chromedriver_service() -> Optional[Service]:
-    """
-    Constrói Selenium Service para o ChromeDriver, tentando (em ordem):
-    1) Cache do webdriver-manager
-    2) Download via webdriver-manager (se disponível)
-    3) None (deixar Selenium tentar resolver via PATH)
-    """
-    cached = _find_chromedriver_in_cache_windows()
+    cached = _find_chromedriver_in_cache()
     if cached and os.path.exists(cached):
         logger.info(f"[driver_factory] Usando ChromeDriver do cache: {cached}")
         return Service(cached)
 
     if ChromeDriverManager is not None:
         try:
-            logger.warning("[driver_factory] ChromeDriver não encontrado em cache, tentando baixar via webdriver-manager...")
+            logger.warning("[driver_factory] ChromeDriver não encontrado em cache; tentando baixar via webdriver-manager...")
             return Service(ChromeDriverManager().install())
         except Exception as e:
             logger.error(f"[driver_factory] Falha ao baixar ChromeDriver: {e}")
@@ -105,69 +83,19 @@ def _build_chromedriver_service() -> Optional[Service]:
     return None
 
 
-# ---------------------------------------------------------------------------
-# Driver LOCAL "normal" (Selenium cria o Chrome)
-# ---------------------------------------------------------------------------
-
-def _build_local_driver(headless: bool) -> WebDriver:
-    options = webdriver.ChromeOptions()
-
-    if headless:
-        options.add_argument("--headless=new")
-
-    options.add_argument("--start-maximized")
-    options.add_argument("--disable-gpu")
-    options.add_argument("--no-sandbox")
-    options.add_argument("--disable-dev-shm-usage")
-    options.add_argument("--disable-blink-features=AutomationControlled")
-    options.add_experimental_option("excludeSwitches", ["enable-automation"])
-    options.add_experimental_option("useAutomationExtension", False)
-    options.add_argument("--window-size=1920,1080")
-
-    # Downloads locais
-    downloads_path = os.path.join(os.getcwd(), "downloads_local")
-    os.makedirs(downloads_path, exist_ok=True)
-    prefs = {
-        "download.default_directory": downloads_path,
-        "download.prompt_for_download": False,
-        "download.directory_upgrade": True,
-        "safebrowsing.enabled": True,
-    }
-    options.add_experimental_option("prefs", prefs)
-
-    service = _build_chromedriver_service()
-    if service:
-        driver = webdriver.Chrome(service=service, options=options)
-    else:
-        driver = webdriver.Chrome(options=options)
-
-    _apply_vba_driver_settings(driver)
-    return driver
-
-
-# ---------------------------------------------------------------------------
-# Driver "attach" (Selenium anexa em Chrome existente pós-login)
-# ---------------------------------------------------------------------------
-
-def create_attached_driver(debugger_address: str, headless: bool = False) -> WebDriver:
+def create_attached_driver(debugger_address: str) -> WebDriver:
     """
-    Cria um WebDriver anexado em uma instância de Chrome já aberta com:
-      --remote-debugging-port=<porta>
+    Cria WebDriver anexado em um Chrome já rodando com:
+      --remote-debugging-port=9222
 
-    Fidelidade ao VBA:
-    - o VBA não "cria" o Chrome via Selenium; ele abre o Chrome e depois conecta.
-
-    Parâmetros:
-    - debugger_address: "127.0.0.1:9222"
-    - headless: ignorado na prática (não existe "headless attach" pós-fato), mas mantido por assinatura.
+    Exemplo debugger_address:
+      - LOCAL: "127.0.0.1:9222"
+      - DOCKER Opção 1: "chrome-login:9222"
     """
     options = webdriver.ChromeOptions()
-
-    # IMPORTANTE: ao anexar, o Chrome já está rodando; headless não se aplica.
     options.add_experimental_option("debuggerAddress", debugger_address)
 
-    # Ainda setamos preferências para downloads (pode não surtir efeito se o perfil já estiver carregado,
-    # mas mantém coerência do projeto).
+    # downloads (não é crítico no attach, mas mantém coerência)
     downloads_path = os.path.join(os.getcwd(), "downloads_local")
     os.makedirs(downloads_path, exist_ok=True)
     prefs = {
@@ -185,15 +113,14 @@ def create_attached_driver(debugger_address: str, headless: bool = False) -> Web
         driver = webdriver.Chrome(options=options)
 
     _apply_vba_driver_settings(driver)
-    logger.info(f"[driver_factory] WebDriver anexado com sucesso em {debugger_address}")
+    logger.info(f"[driver_factory] WebDriver anexado em {debugger_address}")
     return driver
 
 
-# ---------------------------------------------------------------------------
-# Driver REMOTO (Docker Selenium) - manter para quando voltar Docker
-# ---------------------------------------------------------------------------
-
 def _build_remote_driver(remote_url: str, headless: bool) -> WebDriver:
+    """
+    Mantém suporte ao Selenium remoto tradicional (Grid), mas NÃO é o foco da Opção 1.
+    """
     options = webdriver.ChromeOptions()
     if headless:
         options.add_argument("--headless=new")
@@ -202,18 +129,7 @@ def _build_remote_driver(remote_url: str, headless: bool) -> WebDriver:
     options.add_argument("--disable-gpu")
     options.add_argument("--no-sandbox")
     options.add_argument("--disable-dev-shm-usage")
-    options.add_argument("--disable-blink-features=AutomationControlled")
-    options.add_experimental_option("excludeSwitches", ["enable-automation"])
-    options.add_experimental_option("useAutomationExtension", False)
     options.add_argument("--window-size=1920,1080")
-
-    prefs = {
-        "download.default_directory": "/home/ubuntu/projeto_trabalho/projeto_adaptado/selenium_downloads",
-        "download.prompt_for_download": False,
-        "download.directory_upgrade": True,
-        "safebrowsing.enabled": True,
-    }
-    options.add_experimental_option("prefs", prefs)
 
     for attempt in range(1, 6):
         try:
@@ -230,10 +146,7 @@ def _build_remote_driver(remote_url: str, headless: bool) -> WebDriver:
 
 def create_driver(headless: bool = False, remote_url: Optional[str] = None) -> WebDriver:
     """
-    Cria WebDriver baseado no modo configurado.
-    - SELENIUM_MODE=local -> Chrome local
-    - SELENIUM_MODE=remote -> Selenium remoto (Docker)
-    - SELENIUM_MODE=auto  -> remoto se SELENIUM_REMOTE_URL existir, senão local
+    Driver padrão do projeto. Mantido para compatibilidade.
     """
     mode = os.getenv("SELENIUM_MODE", "auto").lower()
     env_remote_url = os.getenv("SELENIUM_REMOTE_URL")
@@ -246,4 +159,21 @@ def create_driver(headless: bool = False, remote_url: Optional[str] = None) -> W
 
     # default: local
     logger.info("[driver_factory] Usando WebDriver LOCAL (Chrome da máquina).")
-    return _build_local_driver(headless)
+    options = webdriver.ChromeOptions()
+    if headless:
+        options.add_argument("--headless=new")
+
+    options.add_argument("--start-maximized")
+    options.add_argument("--disable-gpu")
+    options.add_argument("--no-sandbox")
+    options.add_argument("--disable-dev-shm-usage")
+    options.add_argument("--window-size=1920,1080")
+
+    service = _build_chromedriver_service()
+    if service:
+        driver = webdriver.Chrome(service=service, options=options)
+    else:
+        driver = webdriver.Chrome(options=options)
+
+    _apply_vba_driver_settings(driver)
+    return driver
