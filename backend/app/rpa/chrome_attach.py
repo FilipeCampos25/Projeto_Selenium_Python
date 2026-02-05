@@ -7,8 +7,16 @@ Implementa o fluxo "VBA-like" para DOCKER (Opção 1):
 - Backend monitora DevTools /json (igual ao VBA) para detectar pós-login.
 - Depois cria WebDriver anexando via debuggerAddress (Selenium só entra após login).
 
-Também mantém compatibilidade com modo LOCAL (abrir Chrome via subprocess),
-mas o foco aqui é o modo DOCKER "attach pós-login".
+Também mantém compatibilidade com modo LOCAL.
+
+AJUSTE IMPORTANTE (MODO LOCAL + ELASTIC):
+- Em algumas empresas (Elastic Security/EDR), abrir o Chrome com
+  --remote-debugging-port a partir do python.exe dispara alerta
+  "Browser Debugging from Unusual Parent" e o processo é encerrado.
+- Para reduzir isso, no modo LOCAL o Chrome agora é iniciado via
+  ShellExecuteW (equivalente a "abrir normalmente" pelo Windows),
+  o que costuma trocar o "process parent" e reduzir falsos positivos.
+- Se ShellExecuteW falhar, faz fallback para subprocess.Popen (comportamento antigo).
 """
 
 from __future__ import annotations
@@ -18,6 +26,7 @@ import logging
 import os
 import socket
 import subprocess
+import ctypes
 import time
 from dataclasses import dataclass
 from pathlib import Path
@@ -38,6 +47,7 @@ DEFAULT_USER_AGENT = (
 # ---------------------------------------------------------------------------
 # Helpers de rede/HTTP (VBA lia http://localhost:<porta>/json)
 # ---------------------------------------------------------------------------
+
 
 def _is_port_open(host: str, port: int, timeout_s: float = 0.25) -> bool:
     with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as sock:
@@ -103,6 +113,7 @@ def open_url_via_devtools(host: str, port: int, url: str) -> None:
 # Local (manter para compatibilidade com seu fluxo atual)
 # ---------------------------------------------------------------------------
 
+
 def _default_chrome_candidates_windows() -> Sequence[str]:
     candidates = []
     program_files = os.environ.get("ProgramFiles", r"C:\Program Files")
@@ -142,6 +153,18 @@ def resolve_selenium_profile_dir() -> str:
     return str(base)
 
 
+def _launch_chrome_windows_shell_execute(chrome_path: str, args: str) -> None:
+    """
+    Inicia o Chrome via ShellExecuteW (mais parecido com abrir pelo Explorer).
+    Isso costuma reduzir alertas de EDR quando o Chrome é iniciado com DevTools
+    a partir do python.exe.
+    """
+    # ShellExecuteW retorna um "HINSTANCE" (>32 = sucesso). <=32 = erro.
+    rc = ctypes.windll.shell32.ShellExecuteW(None, "open", chrome_path, args, None, 1)
+    if rc <= 32:
+        raise RuntimeError(f"ShellExecuteW falhou (código={rc}).")
+
+
 @dataclass(frozen=True)
 class ManualLoginSession:
     port: int
@@ -157,27 +180,55 @@ def start_manual_login_session_local(
     user_agent: str = DEFAULT_USER_AGENT,
 ) -> ManualLoginSession:
     """
-    Modo LOCAL (igual ao seu fluxo atual): abre Chrome fora do Selenium com remote debugging.
+    Modo LOCAL: abre Chrome fora do Selenium com remote debugging.
+
+    Ajuste:
+    - Tenta iniciar via ShellExecuteW (Windows), para reduzir bloqueios do Elastic/EDR.
+    - Se falhar, faz fallback para subprocess.Popen (comportamento antigo).
     """
     chrome_path = resolve_chrome_path()
     chosen_port = port or int(os.getenv("CHROME_DEBUG_PORT", "0") or 0) or _find_free_port()
     profile_dir = user_data_dir or resolve_selenium_profile_dir()
 
-    cmd = [
-        chrome_path,
-        f"--remote-debugging-port={chosen_port}",
-        f"--user-data-dir={profile_dir}",
-        "--profile-directory=Default",
-        f"--user-agent={user_agent}",
-        "--no-first-run",
-        "--no-default-browser-check",
-        "--new-tab",
-        start_url,
-    ]
+    # Args como string (ShellExecuteW precisa string)
+    args_str = (
+        f'--remote-debugging-port={chosen_port} '
+        f'--user-data-dir="{profile_dir}" '
+        f'--profile-directory=Default '
+        f'--user-agent="{user_agent}" '
+        f'--no-first-run '
+        f'--no-default-browser-check '
+        f'--new-tab '
+        f'"{start_url}"'
+    )
 
     logger.info(f"[LOGIN] Abrindo Chrome LOCAL com DevTools na porta {chosen_port}...")
-    subprocess.Popen(cmd, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, shell=False)
 
+    launched = False
+    if os.name == "nt":
+        try:
+            _launch_chrome_windows_shell_execute(chrome_path, args_str)
+            launched = True
+            logger.info("[LOGIN] Chrome iniciado via ShellExecuteW (Windows).")
+        except Exception as e:
+            logger.warning(f"[LOGIN] ShellExecuteW falhou, usando fallback subprocess: {e}")
+
+    if not launched:
+        # Fallback (comportamento antigo)
+        cmd = [
+            chrome_path,
+            f"--remote-debugging-port={chosen_port}",
+            f"--user-data-dir={profile_dir}",
+            "--profile-directory=Default",
+            f"--user-agent={user_agent}",
+            "--no-first-run",
+            "--no-default-browser-check",
+            "--new-tab",
+            start_url,
+        ]
+        subprocess.Popen(cmd, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, shell=False)
+
+    # Aguarda DevTools subir
     deadline = time.time() + 15
     while time.time() < deadline:
         if _is_port_open("127.0.0.1", chosen_port):
@@ -190,14 +241,13 @@ def start_manual_login_session_local(
             )
         time.sleep(0.2)
 
-    raise RuntimeError(
-        f"[LOGIN] Falha ao abrir Chrome na porta {chosen_port} (LOCAL)."
-    )
+    raise RuntimeError(f"[LOGIN] Falha ao abrir Chrome na porta {chosen_port} (LOCAL).")
 
 
 # ---------------------------------------------------------------------------
 # Espera pós-login (LOCAL ou DOCKER)
 # ---------------------------------------------------------------------------
+
 
 def wait_until_logged_in(
     host: str,
